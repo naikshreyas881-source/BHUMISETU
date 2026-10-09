@@ -1,6 +1,30 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme {
+  --color-forest-900: #102e1f;
+  --color-forest-800: #1b4332;
+  --color-forest-700: #245943;
+  --color-forest-600: #2d6a4f;
+
+  --color-leaf-600: #2d6a4f;
+  --color-leaf-500: #40916c;
+  --color-leaf-400: #52b788;
+  --color-leaf-300: #74c69d;
+  --color-leaf-200: #95d5b2;
+  --color-leaf-100: #d8f3dc;
+
+  --color-cream-50: #fffdf5;
+  --color-cream-100: #fefae0;
+  --color-cream-200: #f7f4d0;
+  --color-cream-300: #eee9ba;
+
+  --color-earth-800: #4a3728;
+  --color-earth-700: #604a39;
+  --color-earth-600: #775d47;
+  --color-earth-500: #8c6d53;
+  --color-earth-400: #a98b73;
+  --color-earth-100: #f0ece8;
+}
 
 :root {
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
