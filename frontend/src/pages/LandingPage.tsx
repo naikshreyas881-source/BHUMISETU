@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Sprout, Mic, CalendarCheck, ShieldCheck, ArrowRight, Tractor, Wrench } from 'lucide-react';
+import { Sprout, Mic, CalendarCheck, ShieldCheck, ArrowRight, Tractor, Wrench, ShoppingBag } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export const LandingPage: React.FC = () => {
@@ -40,17 +40,24 @@ export const LandingPage: React.FC = () => {
             ) : (
               <>
                 <Link
-                  to="/register"
+                  to="/marketplace"
                   className="inline-flex items-center space-x-2 bg-leaf-400 hover:bg-leaf-300 text-forest-900 font-bold px-6 py-3.5 rounded-xl shadow-lg transition-transform transform active:scale-95"
                 >
-                  <span>Register as a Farmer / Owner</span>
-                  <ArrowRight className="w-5 h-5" />
+                  <ShoppingBag className="w-5 h-5" />
+                  <span>Explore Marketplace</span>
                 </Link>
                 <Link
                   to="/login"
                   className="inline-flex items-center space-x-2 bg-forest-800/80 hover:bg-forest-700 text-cream-100 font-semibold px-6 py-3.5 rounded-xl border border-forest-600 transition-colors"
                 >
-                  <span>Sign In</span>
+                  <span>Sign In (1-Click Roles)</span>
+                </Link>
+                <Link
+                  to="/register"
+                  className="inline-flex items-center space-x-2 text-leaf-300 hover:text-white font-medium px-4 py-3.5 transition-colors text-sm"
+                >
+                  <span>Create Account</span>
+                  <ArrowRight className="w-4 h-4" />
                 </Link>
               </>
             )}

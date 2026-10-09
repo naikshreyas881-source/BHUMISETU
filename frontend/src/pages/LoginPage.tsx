@@ -31,9 +31,20 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  const handleQuickFill = (demoEmail: string, demoPass: string) => {
+
+  const handleQuickLogin = async (demoEmail: string, demoPass: string, targetPath: string = '/dashboard') => {
     setEmail(demoEmail);
     setPassword(demoPass);
+    setError(null);
+    setIsSubmitting(true);
+    try {
+      await login(demoEmail, demoPass);
+      navigate(targetPath);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to sign in.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -120,22 +131,30 @@ export const LoginPage: React.FC = () => {
           <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider text-center mb-3">
             Quick Demonstration Credentials
           </p>
-          <div className="grid grid-cols-2 gap-2 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
             <button
               type="button"
-              onClick={() => handleQuickFill('farmer1@bhumisetu.org', 'SecurePassword123')}
-              className="p-2 bg-leaf-50 hover:bg-leaf-100 text-forest-800 rounded-lg border border-leaf-200 text-left font-medium transition-colors"
+              onClick={() => handleQuickLogin('farmer1@bhumisetu.org', 'SecurePassword123', '/dashboard')}
+              className="p-2.5 bg-leaf-50 hover:bg-leaf-100 text-forest-800 rounded-lg border border-leaf-200 text-left font-medium transition-colors"
             >
               🌱 Farmer Ramesh
-              <span className="block text-[10px] text-gray-500">farmer1@bhumisetu.org</span>
+              <span className="block text-[10px] text-gray-500">1-Click Farmer Portal</span>
             </button>
             <button
               type="button"
-              onClick={() => handleQuickFill('admin_rbac@bhumisetu.org', 'AdminPassword123')}
-              className="p-2 bg-purple-50 hover:bg-purple-100 text-purple-900 rounded-lg border border-purple-200 text-left font-medium transition-colors"
+              onClick={() => handleQuickLogin('owner_manjunath@bhumisetu.org', 'OwnerSecure123', '/owner')}
+              className="p-2.5 bg-amber-50 hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 text-left font-medium transition-colors"
+            >
+              🚜 Owner Manjunath
+              <span className="block text-[10px] text-gray-500">1-Click Fleet Console</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickLogin('admin_rbac@bhumisetu.org', 'AdminPassword123', '/admin')}
+              className="p-2.5 bg-purple-50 hover:bg-purple-100 text-purple-900 rounded-lg border border-purple-200 text-left font-medium transition-colors"
             >
               🛡️ System Admin
-              <span className="block text-[10px] text-gray-500">admin_rbac@bhumisetu.org</span>
+              <span className="block text-[10px] text-gray-500">1-Click Audit Admin</span>
             </button>
           </div>
         </div>
