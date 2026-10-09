@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { CloudRain, Wind, Droplets, Thermometer, AlertTriangle, ShieldCheck } from 'lucide-react';
 import apiClient from '../../api/client';
 import { useLanguage } from '../../i18n/LanguageContext';
+import { useUserLocation } from '../../context/LocationContext';
 
 export interface WeatherData {
   is_live: boolean;
@@ -23,10 +24,15 @@ interface WeatherWidgetProps {
 }
 
 export const WeatherWidget: React.FC<WeatherWidgetProps> = ({
-  latitude = 12.5218,
-  longitude = 76.8951,
+  latitude: propLat,
+  longitude: propLon,
 }) => {
   const { t } = useLanguage();
+  const { latitude: userLat, longitude: userLon, locationName } = useUserLocation();
+
+  const latitude = propLat ?? userLat;
+  const longitude = propLon ?? userLon;
+
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -72,7 +78,7 @@ export const WeatherWidget: React.FC<WeatherWidgetProps> = ({
           <CloudRain className="w-5 h-5 text-emerald-300" />
           <div>
             <h3 className="font-bold text-sm tracking-wide text-white">{t.weather.title}</h3>
-            <p className="text-[11px] text-emerald-200/80">Mandya / Mysuru Basin • {weather.source}</p>
+            <p className="text-[11px] text-emerald-200/80">📍 {locationName} • {weather.source}</p>
           </div>
         </div>
 

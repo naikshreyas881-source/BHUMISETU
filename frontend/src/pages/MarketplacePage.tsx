@@ -15,6 +15,7 @@ import { BookingModal } from '../components/marketplace/BookingModal';
 import { ResourceMap } from '../components/marketplace/ResourceMap';
 import { WeatherWidget } from '../components/weather/WeatherWidget';
 import { useLanguage } from '../i18n/LanguageContext';
+import { useUserLocation } from '../context/LocationContext';
 
 const CATEGORIES: { label: string; value: ResourceCategory | 'all' }[] = [
   { label: 'All Equipment & Labour', value: 'all' },
@@ -29,6 +30,8 @@ const CATEGORIES: { label: string; value: ResourceCategory | 'all' }[] = [
 
 export const MarketplacePage: React.FC = () => {
   const { t } = useLanguage();
+  const { latitude, longitude, locationName, source, detectLocation, isDetecting } = useUserLocation();
+
   const [resources, setResources] = useState<Resource[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -51,7 +54,10 @@ export const MarketplacePage: React.FC = () => {
     setIsLoading(true);
     setError(null);
 
-    const params: Record<string, any> = {};
+    const params: Record<string, any> = {
+      latitude,
+      longitude,
+    };
     if (selectedCategory !== 'all') params.category = selectedCategory;
     if (searchQuery.trim()) params.search = searchQuery.trim();
     if (operationQuery.trim()) params.operation = operationQuery.trim();
@@ -69,7 +75,7 @@ export const MarketplacePage: React.FC = () => {
 
   useEffect(() => {
     fetchResources();
-  }, [selectedCategory, maxPrice]);
+  }, [selectedCategory, maxPrice, latitude, longitude]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -207,6 +213,28 @@ export const MarketplacePage: React.FC = () => {
             <span className="text-gray-400 text-[10px]">₹3000+</span>
           </div>
         </div>
+      </div>
+
+      {/* Location Distance Notice */}
+      <div className="flex flex-wrap items-center justify-between bg-emerald-50/80 border border-emerald-200/90 px-4 py-2.5 rounded-2xl text-xs text-forest-900 gap-2">
+        <div className="flex items-center space-x-2">
+          <MapPin className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+          <span>
+            Calculating machinery distance relative to: <strong>{locationName}</strong>
+          </span>
+          {source === 'gps' && (
+            <span className="bg-emerald-200/90 text-emerald-900 text-[10px] px-2 py-0.5 rounded-full font-bold">
+              ● Live GPS
+            </span>
+          )}
+        </div>
+        <button
+          onClick={() => detectLocation()}
+          disabled={isDetecting}
+          className="text-emerald-700 hover:text-emerald-900 font-bold underline cursor-pointer text-[11px]"
+        >
+          {isDetecting ? 'Detecting GPS...' : '📍 Refresh Live Location'}
+        </button>
       </div>
 
       {/* Main View Area */}

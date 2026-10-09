@@ -2,7 +2,9 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { LanguageProvider } from './i18n/LanguageContext';
+import { LocationProvider } from './context/LocationContext';
 import { Header } from './components/layout/Header';
+import { LocationBar } from './components/common/LocationBar';
 import { Footer } from './components/layout/Footer';
 import { ProtectedRoute } from './components/common/ProtectedRoute';
 import { LandingPage } from './pages/LandingPage';
@@ -18,14 +20,18 @@ import { BookingsPage } from './pages/BookingsPage';
 export const App: React.FC = () => {
   return (
     <LanguageProvider>
-      <AuthProvider>
-        <Router basename={import.meta.env.BASE_URL}>
-          <div className="flex flex-col min-h-screen bg-[#faf9f6] text-gray-900 font-sans selection:bg-leaf-200">
-            {/* Header visible on every single page with BHUMISETU branding & tagline */}
-            <Header />
+      <LocationProvider>
+        <AuthProvider>
+          <Router basename={import.meta.env.BASE_URL}>
+            <div className="flex flex-col min-h-screen bg-[#faf9f6] text-gray-900 font-sans selection:bg-leaf-200">
+              {/* Header visible on every single page with BHUMISETU branding & tagline */}
+              <Header />
 
-            {/* Main content body */}
-            <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+              {/* Live Location & GPS Tracking Bar */}
+              <LocationBar />
+
+              {/* Main content body */}
+              <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
               <Routes>
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/login" element={<LoginPage />} />
@@ -93,8 +99,9 @@ export const App: React.FC = () => {
           </div>
         </Router>
       </AuthProvider>
-    </LanguageProvider>
-  );
+    </LocationProvider>
+  </LanguageProvider>
+);
 };
 
 export default App;

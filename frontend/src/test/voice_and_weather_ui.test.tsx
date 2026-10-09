@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { LanguageProvider } from '../i18n/LanguageContext';
+import { LocationProvider } from '../context/LocationContext';
 import { WeatherWidget } from '../components/weather/WeatherWidget';
 import { FarmVoiceModal } from '../components/voice/FarmVoiceModal';
 
@@ -8,7 +9,9 @@ describe('Voice & Weather UI Components Verification', () => {
   it('renders WeatherWidget with live metrics container', () => {
     render(
       <LanguageProvider>
-        <WeatherWidget />
+        <LocationProvider>
+          <WeatherWidget />
+        </LocationProvider>
       </LanguageProvider>
     );
 

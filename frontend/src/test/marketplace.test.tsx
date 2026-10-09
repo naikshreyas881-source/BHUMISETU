@@ -5,6 +5,7 @@ import { MarketplacePage } from '../pages/MarketplacePage';
 import { BookingModal } from '../components/marketplace/BookingModal';
 import { AuthProvider } from '../context/AuthContext';
 import { LanguageProvider } from '../i18n/LanguageContext';
+import { LocationProvider } from '../context/LocationContext';
 import type { Resource } from '../types/marketplace';
 
 const mockResource: Resource = {
@@ -33,11 +34,13 @@ describe('Marketplace Components Verification', () => {
   it('renders marketplace search filters and category chips', () => {
     render(
       <LanguageProvider>
-        <AuthProvider>
-          <BrowserRouter>
-            <MarketplacePage />
-          </BrowserRouter>
-        </AuthProvider>
+        <LocationProvider>
+          <AuthProvider>
+            <BrowserRouter>
+              <MarketplacePage />
+            </BrowserRouter>
+          </AuthProvider>
+        </LocationProvider>
       </LanguageProvider>
     );
 

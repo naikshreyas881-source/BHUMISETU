@@ -72,7 +72,7 @@ export const FarmerDashboardPage: React.FC = () => {
       </div>
 
       {/* Weather Forecast Widget */}
-      <WeatherWidget latitude={farms[0]?.latitude || 12.5218} longitude={farms[0]?.longitude || 76.8951} />
+      <WeatherWidget latitude={farms[0]?.latitude} longitude={farms[0]?.longitude} />
 
       {/* Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
