@@ -19,7 +19,7 @@ export const App: React.FC = () => {
   return (
     <LanguageProvider>
       <AuthProvider>
-        <Router>
+        <Router basename={import.meta.env.BASE_URL}>
           <div className="flex flex-col min-h-screen bg-[#faf9f6] text-gray-900 font-sans selection:bg-leaf-200">
             {/* Header visible on every single page with BHUMISETU branding & tagline */}
             <Header />

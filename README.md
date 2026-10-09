@@ -5,6 +5,12 @@
 
 ---
 
+### 🌐 Live Links
+- **GitHub Repository**: [https://github.com/naikshreyas881-source/BHUMISETU](https://github.com/naikshreyas881-source/BHUMISETU)
+- **Live Web Application (GitHub Pages)**: [https://naikshreyas881-source.github.io/BHUMISETU/](https://naikshreyas881-source.github.io/BHUMISETU/)
+
+---
+
 ## 🌾 Project Overview
 
 **BHUMISETU** is an AI-powered agricultural resource coordination platform designed for Indian farming communities. It bridges the gap between farmers needing agricultural machinery and verified equipment owners, service providers, and farm labour teams across Karnataka (Mandya, Hassan, Mysuru).
