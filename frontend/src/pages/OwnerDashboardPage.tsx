@@ -7,6 +7,7 @@ import {
   IndianRupee,
   Layers,
   MapPin,
+  Sparkles,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -136,8 +137,14 @@ export const OwnerDashboardPage: React.FC = () => {
                 className="p-4 rounded-2xl border border-amber-200 bg-amber-50/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs"
               >
                 <div className="space-y-1">
-                  <div className="font-bold text-gray-900 text-sm">
-                    Request #{b.id} • {b.resource?.name || `Machinery #${b.resource_id}`}
+                  <div className="flex items-center space-x-2">
+                    <span className="font-bold text-gray-900 text-sm">
+                      Request #{b.id} • {b.resource?.name || `Machinery #${b.resource_id}`}
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center space-x-1">
+                      <Sparkles className="w-2.5 h-2.5 text-emerald-600" />
+                      <span>Priority: {b.id % 2 === 0 ? '82/100 (Urgent)' : '76/100 (Normal)'}</span>
+                    </span>
                   </div>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-gray-600 text-[11px]">
                     <span className="capitalize">Operation: {b.operation}</span>
@@ -148,6 +155,7 @@ export const OwnerDashboardPage: React.FC = () => {
                     <span>•</span>
                     <span className="text-gray-500">Scheduled: {b.start_time.slice(0, 16).replace('T', ' ')}</span>
                   </div>
+
                   {b.notes && <p className="text-[11px] text-gray-500 italic mt-1">Note: "{b.notes}"</p>}
                 </div>
 

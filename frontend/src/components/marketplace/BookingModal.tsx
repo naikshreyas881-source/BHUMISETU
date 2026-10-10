@@ -55,7 +55,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
   // Priority Preview state
   const [priorityData, setPriorityData] = useState<PriorityData | null>(null);
-  const [showPriority, setShowPriority] = useState<boolean>(false);
+  const [showPriority, setShowPriority] = useState<boolean>(true);
+
 
   // Weather Booking Prediction state
   const [weatherPrediction, setWeatherPrediction] = useState<WeatherPredictionData | null>(null);
@@ -413,23 +414,39 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 />
               </div>
 
-              {/* Priority Assessment Preview Toggle */}
-              <div>
-                <button
-                  type="button"
-                  onClick={() => setShowPriority(!showPriority)}
-                  className="flex items-center space-x-1.5 text-xs font-bold text-leaf-700 hover:text-leaf-800 transition-colors"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>{showPriority ? 'Hide Priority Assessment' : 'View Agronomic Priority Score Breakdown'}</span>
-                </button>
+              {/* Agronomic Priority Score Assessment */}
+              <div className="bg-forest-50/60 p-3.5 rounded-2xl border border-leaf-200/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-forest-700" />
+                    <span className="text-xs font-bold text-gray-800 uppercase tracking-wider">
+                      Agronomic Priority Score
+                    </span>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    {priorityData && (
+                      <span className="px-2 py-0.5 rounded-full text-[11px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                        {priorityData.overall_score} / 100
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setShowPriority(!showPriority)}
+                      className="text-[11px] font-bold text-leaf-700 hover:text-leaf-900 transition-colors cursor-pointer"
+                    >
+                      {showPriority ? 'Collapse Factors' : 'Expand Factors'}
+                    </button>
+                  </div>
+                </div>
 
                 {showPriority && (
-                  <div className="mt-2">
+                  <div className="mt-1">
                     <PriorityMeter priority={priorityData} />
                   </div>
                 )}
               </div>
+
 
               {/* Notes */}
               <div>
@@ -513,6 +530,12 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     {weatherPrediction && weatherPrediction.score !== null
                       ? `${Math.round(weatherPrediction.score)}/100 • ${weatherPrediction.risk_category}`
                       : weatherPrediction?.risk_category || 'Baseline Forecast'}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-gray-200 items-center">
+                  <span className="text-gray-500">Agronomic Priority</span>
+                  <span className="font-bold text-forest-800">
+                    {priorityData ? `${priorityData.overall_score} / 100 (Assessed)` : 'Assessing...'}
                   </span>
                 </div>
                 <div className="flex justify-between py-1 pt-2 text-sm font-extrabold text-forest-900">
