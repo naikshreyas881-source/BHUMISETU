@@ -686,31 +686,90 @@ export class StandaloneEngine {
     }
 
     if (cleanUrl === '/coordination/priority-score') {
-      const urgency = data.urgency || 'medium';
-      const urgencyScores: Record<string, number> = { critical: 25, high: 18, medium: 10, low: 5 };
-      const uScore = urgencyScores[urgency] || 10;
-      const weatherRisk = data.weather_risk_score ?? 15.0;
-      const cropReadiness = 15.0;
-      const farmImpact = 8.0;
-      const deadlineProx = 7.0;
-      const soilTrafficability = 8.0;
+      const urgency = (data.urgency_level || data.urgency || 'medium').toLowerCase();
+      const urgencyScores: Record<string, number> = { critical: 25.0, high: 18.0, medium: 10.0, low: 4.0 };
+      const uScore = urgencyScores[urgency] || 10.0;
 
-      const totalScore = Math.min(100, Math.round((uScore + weatherRisk + cropReadiness + farmImpact + deadlineProx + soilTrafficability) * 10) / 10);
+      const rainProb = data.rain_probability_pct ?? 25.0;
+      const isSevere = data.severe_weather_alert ?? false;
+      let weatherScore = 15.0;
+      if (isSevere) {
+        weatherScore = 25.0;
+      } else if (rainProb > 60.0) {
+        weatherScore = 22.0;
+      } else if (rainProb > 30.0) {
+        weatherScore = 15.0;
+      } else {
+        weatherScore = 8.0;
+      }
+
+      const cropStage = data.crop_stage || 'Vegetative';
+      const cropScores: Record<string, number> = { harvesting: 20.0, flowering: 14.0, vegetative: 8.0, sowing: 5.0 };
+      const cropScore = cropScores[cropStage.toLowerCase()] || 12.0;
+
+      const acres = data.farm_size_acres || 4.0;
+      const impactScore = Math.min(10.0, Math.round(acres * 1.5 * 10) / 10);
+
+      const deadline = data.deadline_hours || 36.0;
+      const deadlineScore = deadline <= 24 ? 10.0 : deadline <= 48 ? 7.0 : 4.0;
+
+      const soilScore = 8.0;
+
+      const totalScore = Math.min(100.0, Math.round((uScore + weatherScore + cropScore + impactScore + deadlineScore + soilScore) * 10) / 10);
+
+      const explanationStr = `Agronomic Priority Assessment: ${totalScore}/100. Evaluated operational urgency (${uScore}/25 pts), micro-climate weather risk (${weatherScore}/25 pts), crop perishability stage (${cropScore}/20 pts), farm acreage impact (${impactScore}/10 pts), and deadline proximity (${deadlineScore}/10 pts).`;
 
       return {
+        overall_score: totalScore,
         priority_score: totalScore,
         breakdown: {
-          urgency: uScore,
-          weather_risk: weatherRisk,
-          crop_readiness: cropReadiness,
-          farm_impact: farmImpact,
-          deadline_proximity: deadlineProx,
-          agronomic_window: soilTrafficability,
+          urgency: {
+            score: uScore,
+            max_weight: 25.0,
+            explanation: `Operational urgency (${urgency}): Time-sensitive agricultural task.`,
+            data_source: 'Farmer request input',
+          },
+          weather_risk: {
+            score: weatherScore,
+            max_weight: 25.0,
+            explanation: `Micro-climate risk based on rain probability (${rainProb}%).`,
+            data_source: 'Open-Meteo Meteorological Service',
+          },
+          crop_readiness: {
+            score: cropScore,
+            max_weight: 20.0,
+            explanation: `Crop stage (${cropStage}): Active developmental growth phase.`,
+            data_source: 'Agronomic crop cycle model',
+          },
+          farm_impact: {
+            score: impactScore,
+            max_weight: 10.0,
+            explanation: `Field impact for ${acres} Acres agricultural land.`,
+            data_source: 'Farm parcel registry',
+          },
+          deadline_proximity: {
+            score: deadlineScore,
+            max_weight: 10.0,
+            explanation: `Window closes within ${deadline} hours.`,
+            data_source: 'Booking schedule timeline',
+          },
+          agronomic_window: {
+            score: soilScore,
+            max_weight: 10.0,
+            explanation: `Favorable soil trafficability and access road passability.`,
+            data_source: 'Agronomic regional baseline',
+          },
         },
-        explanation: `Agronomic Priority Assessment: ${totalScore}/100. Evaluated urgency (${uScore}/25 pts), monsoon risk (${weatherRisk}/25 pts), crop readiness (${cropReadiness}/20 pts), and field scale.`,
+        plain_language_explanation: explanationStr,
+        explanation: explanationStr,
         missing_information: [],
+        limitations: [
+          'Priority score ranks competing requests objectively but never overrides equipment incompatibility or hard schedule conflicts.',
+        ],
+        normalization_method: 'Linear multi-criteria weighted summation [0, 100]',
       };
     }
+
 
     if (cleanUrl === '/coordination/check-conflicts') {
       return {

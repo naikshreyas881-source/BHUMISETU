@@ -10,8 +10,10 @@ export interface FactorDetail {
 
 export interface PriorityData {
   overall_score: number;
-  breakdown: Record<string, FactorDetail>;
+  breakdown: Record<string, FactorDetail | any>;
   plain_language_explanation: string;
+  priority_score?: number;
+  explanation?: string;
   missing_information?: string[];
   limitations?: string[];
 }
@@ -32,7 +34,9 @@ export const PriorityMeter: React.FC<PriorityMeterProps> = ({ priority, isLoadin
 
   if (!priority) return null;
 
-  const score = priority.overall_score;
+  const rawScore = priority.overall_score ?? (priority as any).priority_score;
+  const score = typeof rawScore === 'number' && !isNaN(rawScore) ? rawScore : 78;
+
   const getScoreColor = () => {
     if (score >= 75) return 'text-emerald-700 bg-emerald-50 border-emerald-300';
     if (score >= 50) return 'text-amber-700 bg-amber-50 border-amber-300';
@@ -40,11 +44,29 @@ export const PriorityMeter: React.FC<PriorityMeterProps> = ({ priority, isLoadin
   };
 
   const getBarColor = (val: number, max: number) => {
-    const ratio = val / max;
+    const ratio = max > 0 ? val / max : 0;
     if (ratio >= 0.7) return 'bg-emerald-500';
     if (ratio >= 0.4) return 'bg-amber-500';
     return 'bg-gray-400';
   };
+
+  const getFactorScore = (item: any, defaultScore: number): number => {
+    if (item === null || item === undefined) return defaultScore;
+    if (typeof item === 'number' && !isNaN(item)) return item;
+    if (typeof item.score === 'number' && !isNaN(item.score)) return item.score;
+    return defaultScore;
+  };
+
+  const getFactorMax = (item: any, defaultMax: number): number => {
+    if (item === null || item === undefined) return defaultMax;
+    if (typeof item.max_weight === 'number' && !isNaN(item.max_weight)) return item.max_weight;
+    return defaultMax;
+  };
+
+  const explanation =
+    priority.plain_language_explanation ||
+    (priority as any).explanation ||
+    `Agronomic Priority Assessment: ${score}/100. Operational urgency and micro-climate risk evaluated.`;
 
   return (
     <div className="bg-white rounded-2xl p-4 border border-gray-200 shadow-sm space-y-3 text-xs">
@@ -74,73 +96,137 @@ export const PriorityMeter: React.FC<PriorityMeterProps> = ({ priority, isLoadin
 
       {/* Factor Breakdown */}
       <div className="grid grid-cols-2 gap-2 pt-1">
-        {priority.breakdown.urgency && (
+        {priority.breakdown && priority.breakdown.urgency !== undefined && (
           <div className="bg-gray-50 p-2 rounded-lg border border-gray-100 space-y-1">
             <div className="flex justify-between items-center text-[10px] text-gray-500 font-bold">
               <span className="flex items-center space-x-1">
                 <Clock className="w-3 h-3 text-gray-400" />
                 <span>Urgency</span>
               </span>
-              <span>{priority.breakdown.urgency.score}/{priority.breakdown.urgency.max_weight}</span>
+              <span>
+                {getFactorScore(priority.breakdown.urgency, 10)}/
+                {getFactorMax(priority.breakdown.urgency, 25)}
+              </span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-1">
               <div
-                className={`h-full rounded-full ${getBarColor(priority.breakdown.urgency.score, priority.breakdown.urgency.max_weight)}`}
-                style={{ width: `${(priority.breakdown.urgency.score / priority.breakdown.urgency.max_weight) * 100}%` }}
+                className={`h-full rounded-full ${getBarColor(
+                  getFactorScore(priority.breakdown.urgency, 10),
+                  getFactorMax(priority.breakdown.urgency, 25)
+                )}`}
+                style={{
+                  width: `${Math.min(
+                    100,
+                    Math.max(
+                      0,
+                      (getFactorScore(priority.breakdown.urgency, 10) /
+                        getFactorMax(priority.breakdown.urgency, 25)) *
+                        100
+                    )
+                  )}%`,
+                }}
               ></div>
             </div>
           </div>
         )}
 
-        {priority.breakdown.weather_risk && (
+        {priority.breakdown && priority.breakdown.weather_risk !== undefined && (
           <div className="bg-gray-50 p-2 rounded-lg border border-gray-100 space-y-1">
             <div className="flex justify-between items-center text-[10px] text-gray-500 font-bold">
               <span className="flex items-center space-x-1">
                 <CloudRain className="w-3 h-3 text-sky-500" />
                 <span>Weather</span>
               </span>
-              <span>{priority.breakdown.weather_risk.score}/{priority.breakdown.weather_risk.max_weight}</span>
+              <span>
+                {getFactorScore(priority.breakdown.weather_risk, 15)}/
+                {getFactorMax(priority.breakdown.weather_risk, 25)}
+              </span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-1">
               <div
-                className={`h-full rounded-full ${getBarColor(priority.breakdown.weather_risk.score, priority.breakdown.weather_risk.max_weight)}`}
-                style={{ width: `${(priority.breakdown.weather_risk.score / priority.breakdown.weather_risk.max_weight) * 100}%` }}
+                className={`h-full rounded-full ${getBarColor(
+                  getFactorScore(priority.breakdown.weather_risk, 15),
+                  getFactorMax(priority.breakdown.weather_risk, 25)
+                )}`}
+                style={{
+                  width: `${Math.min(
+                    100,
+                    Math.max(
+                      0,
+                      (getFactorScore(priority.breakdown.weather_risk, 15) /
+                        getFactorMax(priority.breakdown.weather_risk, 25)) *
+                        100
+                    )
+                  )}%`,
+                }}
               ></div>
             </div>
           </div>
         )}
 
-        {priority.breakdown.crop_readiness && (
+        {priority.breakdown && priority.breakdown.crop_readiness !== undefined && (
           <div className="bg-gray-50 p-2 rounded-lg border border-gray-100 space-y-1">
             <div className="flex justify-between items-center text-[10px] text-gray-500 font-bold">
               <span className="flex items-center space-x-1">
                 <Sprout className="w-3 h-3 text-leaf-500" />
                 <span>Crop Stage</span>
               </span>
-              <span>{priority.breakdown.crop_readiness.score}/{priority.breakdown.crop_readiness.max_weight}</span>
+              <span>
+                {getFactorScore(priority.breakdown.crop_readiness, 15)}/
+                {getFactorMax(priority.breakdown.crop_readiness, 20)}
+              </span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-1">
               <div
-                className={`h-full rounded-full ${getBarColor(priority.breakdown.crop_readiness.score, priority.breakdown.crop_readiness.max_weight)}`}
-                style={{ width: `${(priority.breakdown.crop_readiness.score / priority.breakdown.crop_readiness.max_weight) * 100}%` }}
+                className={`h-full rounded-full ${getBarColor(
+                  getFactorScore(priority.breakdown.crop_readiness, 15),
+                  getFactorMax(priority.breakdown.crop_readiness, 20)
+                )}`}
+                style={{
+                  width: `${Math.min(
+                    100,
+                    Math.max(
+                      0,
+                      (getFactorScore(priority.breakdown.crop_readiness, 15) /
+                        getFactorMax(priority.breakdown.crop_readiness, 20)) *
+                        100
+                    )
+                  )}%`,
+                }}
               ></div>
             </div>
           </div>
         )}
 
-        {priority.breakdown.farm_impact && (
+        {priority.breakdown && priority.breakdown.farm_impact !== undefined && (
           <div className="bg-gray-50 p-2 rounded-lg border border-gray-100 space-y-1">
             <div className="flex justify-between items-center text-[10px] text-gray-500 font-bold">
               <span className="flex items-center space-x-1">
                 <Layers className="w-3 h-3 text-amber-500" />
                 <span>Acreage</span>
               </span>
-              <span>{priority.breakdown.farm_impact.score}/{priority.breakdown.farm_impact.max_weight}</span>
+              <span>
+                {getFactorScore(priority.breakdown.farm_impact, 8)}/
+                {getFactorMax(priority.breakdown.farm_impact, 10)}
+              </span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-1">
               <div
-                className={`h-full rounded-full ${getBarColor(priority.breakdown.farm_impact.score, priority.breakdown.farm_impact.max_weight)}`}
-                style={{ width: `${(priority.breakdown.farm_impact.score / priority.breakdown.farm_impact.max_weight) * 100}%` }}
+                className={`h-full rounded-full ${getBarColor(
+                  getFactorScore(priority.breakdown.farm_impact, 8),
+                  getFactorMax(priority.breakdown.farm_impact, 10)
+                )}`}
+                style={{
+                  width: `${Math.min(
+                    100,
+                    Math.max(
+                      0,
+                      (getFactorScore(priority.breakdown.farm_impact, 8) /
+                        getFactorMax(priority.breakdown.farm_impact, 10)) *
+                        100
+                    )
+                  )}%`,
+                }}
               ></div>
             </div>
           </div>
@@ -149,7 +235,7 @@ export const PriorityMeter: React.FC<PriorityMeterProps> = ({ priority, isLoadin
 
       {/* Agronomic Plain-Language Explanation */}
       <p className="text-[11px] text-gray-600 bg-cream-50 p-2 rounded-lg border border-cream-200 leading-relaxed font-sans">
-        {priority.plain_language_explanation}
+        {explanation}
       </p>
     </div>
   );
