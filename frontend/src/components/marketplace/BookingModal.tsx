@@ -13,6 +13,11 @@ import {
 import apiClient from '../../api/client';
 import type { Resource, Farm } from '../../types/marketplace';
 import { PriorityMeter, type PriorityData } from '../coordination/PriorityMeter';
+import {
+  WeatherPredictionCard,
+  type WeatherPredictionData,
+} from '../coordination/WeatherPredictionCard';
+
 
 interface BookingModalProps {
   resource: Resource | null;
@@ -52,6 +57,10 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const [priorityData, setPriorityData] = useState<PriorityData | null>(null);
   const [showPriority, setShowPriority] = useState<boolean>(false);
 
+  // Weather Booking Prediction state
+  const [weatherPrediction, setWeatherPrediction] = useState<WeatherPredictionData | null>(null);
+  const [isPredictingWeather, setIsPredictingWeather] = useState<boolean>(false);
+
   // Confirmation step state
   const [isConfirming, setIsConfirming] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -80,15 +89,17 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       setError(null);
       setConflictReport(null);
       setAlternativeSlots([]);
+      setWeatherPrediction(null);
     }
   }, [isOpen, resource]);
 
-  // Check conflicts and priority dynamically when time/parameters change
+  // Check conflicts, priority, and weather suitability dynamically when time/parameters change
   useEffect(() => {
     if (!isOpen || !resource || !startDate || !startTime) return;
 
     const runCoordinationChecks = async () => {
       setIsCheckingConflicts(true);
+      setIsPredictingWeather(true);
       const startIso = new Date(`${startDate}T${startTime}:00Z`).toISOString();
 
       try {
@@ -114,10 +125,22 @@ export const BookingModal: React.FC<BookingModalProps> = ({
           setAlternativeSlots([]);
         }
 
-        // 2. Priority calculation preview
+        // 2. Weather Booking Prediction check
+        const weatherRes = await apiClient.post('/coordination/weather-prediction', {
+          resource_id: resource.id,
+          equipment_category: resource.category,
+          operation: operation || 'general',
+          start_time: startIso,
+          duration_hours: durationHours,
+          farm_id: selectedFarmId || null,
+        });
+        setWeatherPrediction(weatherRes.data);
+
+        // 3. Priority calculation preview
         const prioRes = await apiClient.post('/coordination/priority-score', {
           urgency_level: 'medium',
-          rain_probability_pct: 25.0,
+          rain_probability_pct: weatherRes.data?.expected_weather?.max_rain_probability_pct ?? 25.0,
+          severe_weather_alert: weatherRes.data?.expected_weather?.is_severe_alert ?? false,
           crop_stage: 'Vegetative',
           farm_size_acres: selectedFarm ? selectedFarm.size_acres : 4.0,
           deadline_hours: 36.0,
@@ -127,12 +150,14 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         // Fallback gracefully without blocking
       } finally {
         setIsCheckingConflicts(false);
+        setIsPredictingWeather(false);
       }
     };
 
     const timer = setTimeout(runCoordinationChecks, 350);
     return () => clearTimeout(timer);
   }, [isOpen, resource, startDate, startTime, durationHours, operation, selectedFarmId]);
+
 
   if (!isOpen || !resource) return null;
 
@@ -357,7 +382,17 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 ) : null}
               </div>
 
+              {/* Weather Booking Suitability Prediction Card */}
+              <div className="pt-1">
+                <WeatherPredictionCard
+                  prediction={weatherPrediction}
+                  isLoading={isPredictingWeather}
+                  onApplyAlternative={handleApplyAlternativeSlot}
+                />
+              </div>
+
               {/* Duration Slider */}
+
               <div>
                 <div className="flex justify-between items-center mb-1">
                   <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">
@@ -472,11 +507,38 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     {startDate} at {startTime} ({durationHours} hours)
                   </span>
                 </div>
+                <div className="flex justify-between py-1 border-b border-gray-200 items-center">
+                  <span className="text-gray-500">Weather Forecast</span>
+                  <span className="font-bold text-gray-900">
+                    {weatherPrediction && weatherPrediction.score !== null
+                      ? `${Math.round(weatherPrediction.score)}/100 • ${weatherPrediction.risk_category}`
+                      : weatherPrediction?.risk_category || 'Baseline Forecast'}
+                  </span>
+                </div>
                 <div className="flex justify-between py-1 pt-2 text-sm font-extrabold text-forest-900">
                   <span>Total Estimated Cost</span>
                   <span className="text-base text-forest-800">₹{estimatedCost.toLocaleString()}</span>
                 </div>
               </div>
+
+              {/* Weather Advisory Notice (Non-blocking) */}
+              {weatherPrediction && (weatherPrediction.risk_category === 'High Risk' || weatherPrediction.risk_category === 'Moderate Risk') && (
+                <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200 text-amber-800 text-xs flex items-start space-x-2.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <span className="font-bold block text-amber-900">
+                      Weather Advisory: {weatherPrediction.risk_category}
+                    </span>
+                    <p className="text-[11px] text-amber-700 leading-tight">
+                      {weatherPrediction.plain_language_explanation}
+                    </p>
+                    <p className="text-[10px] text-amber-600 italic">
+                      Notice: This forecast does not block your booking request. You may proceed if you have verified micro-climate conditions.
+                    </p>
+                  </div>
+                </div>
+              )}
+
 
               <div className="flex space-x-3">
                 <button

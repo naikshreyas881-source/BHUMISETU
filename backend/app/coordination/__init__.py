@@ -19,6 +19,10 @@ from app.coordination.alternatives import (
     recommend_alternatives,
     RecommendationResult,
 )
+from app.coordination.weather_prediction import (
+    evaluate_weather_booking_suitability,
+    WeatherPredictionResult,
+)
 
 __all__ = [
     "evaluate_resource_suitability",
@@ -32,4 +36,7 @@ __all__ = [
     "FeasibleSlot",
     "recommend_alternatives",
     "RecommendationResult",
+    "evaluate_weather_booking_suitability",
+    "WeatherPredictionResult",
 ]
+

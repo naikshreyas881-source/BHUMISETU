@@ -86,3 +86,31 @@ class RecommendationResponse(BaseModel):
     explainable_recommendation: str
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class WeatherBookingPredictionRequest(BaseModel):
+    resource_id: Optional[int] = None
+    equipment_category: Optional[str] = None
+    operation: str = Field(..., min_length=2, max_length=100)
+    start_time: datetime
+    duration_hours: float = Field(..., gt=0.0, le=72.0)
+    farm_id: Optional[int] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    crop_type: Optional[str] = None
+
+
+class WeatherBookingPredictionResponse(BaseModel):
+    score: Optional[float] = None
+    risk_category: str
+    factors: List[Dict[str, Any]]
+    expected_weather: Dict[str, Any]
+    plain_language_explanation: str
+    suggested_alternatives: List[Dict[str, Any]] = []
+    is_limited_prediction: bool = False
+    limitations: List[str] = []
+    equipment_category: str
+    operation: str
+
+    model_config = ConfigDict(from_attributes=True)
+

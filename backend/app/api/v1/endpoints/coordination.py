@@ -9,7 +9,9 @@ from app.coordination import (
     calculate_priority_score,
     detect_booking_conflicts,
     recommend_alternatives,
+    evaluate_weather_booking_suitability,
 )
+from app.services.weather import fetch_weather_forecast_for_window
 from app.schemas.coordination import (
     SuitabilityCheckRequest,
     SuitabilityCheckResponse,
@@ -19,9 +21,12 @@ from app.schemas.coordination import (
     ConflictCheckResponse,
     RecommendationRequest,
     RecommendationResponse,
+    WeatherBookingPredictionRequest,
+    WeatherBookingPredictionResponse,
 )
 
 router = APIRouter()
+
 
 
 @router.post("/check-suitability", response_model=SuitabilityCheckResponse)
@@ -108,3 +113,60 @@ def generate_recommendations(req: RecommendationRequest, db: Session = Depends(g
     )
 
     return RecommendationResponse(**rec_result.to_dict())
+
+
+@router.post("/weather-prediction", response_model=WeatherBookingPredictionResponse)
+def compute_weather_booking_prediction(
+    req: WeatherBookingPredictionRequest, db: Session = Depends(get_db)
+):
+    """
+    Evaluates weather suitability score (0–100) and risk category for an equipment booking window.
+    Applies agronomic rules specific to equipment type (tractor, sprayer, harvester, irrigation, seeder).
+    Does not invent data; handles missing forecasts and distant dates transparently.
+    Advisory only; never blocks or rejects bookings.
+    """
+    latitude = req.latitude
+    longitude = req.longitude
+    eq_cat = req.equipment_category
+
+    # Resolve coordinates and category from Resource and Farm models if needed
+    if (latitude is None or longitude is None) and req.farm_id:
+        farm = db.query(Farm).filter(Farm.id == req.farm_id).first()
+        if farm:
+            latitude = farm.latitude
+            longitude = farm.longitude
+
+    if req.resource_id:
+        resource = db.query(Resource).filter(Resource.id == req.resource_id).first()
+        if resource:
+            if latitude is None or longitude is None:
+                latitude = resource.latitude
+                longitude = resource.longitude
+            if not eq_cat:
+                eq_cat = resource.category.value if hasattr(resource.category, "value") else str(resource.category)
+
+    # Fallback coordinates: Mandya, Karnataka agricultural zone
+    if latitude is None or longitude is None:
+        latitude = 12.5218
+        longitude = 76.8951
+
+    # Fetch verified weather forecast window from Open-Meteo
+    weather_data = fetch_weather_forecast_for_window(
+        latitude=latitude,
+        longitude=longitude,
+        start_time=req.start_time,
+        duration_hours=req.duration_hours,
+    )
+
+    # Run equipment-specific agronomic scoring model
+    prediction = evaluate_weather_booking_suitability(
+        equipment_category=eq_cat,
+        operation=req.operation,
+        start_time=req.start_time,
+        duration_hours=req.duration_hours,
+        weather_data=weather_data,
+        crop_type=req.crop_type,
+    )
+
+    return WeatherBookingPredictionResponse(**prediction.to_dict())
+

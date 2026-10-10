@@ -7,6 +7,7 @@ import {
   AlertCircle,
   RefreshCw,
   Ban,
+  CloudRain,
 } from 'lucide-react';
 import apiClient from '../api/client';
 import { useAuth } from '../context/AuthContext';
@@ -214,7 +215,15 @@ export const BookingsPage: React.FC = () => {
                   </div>
                 )}
 
+                {/* Weather-Based Booking Prediction Indicator */}
+                <div className="flex items-center space-x-2 text-[11px] text-gray-600 bg-forest-50/60 px-3 py-1.5 rounded-xl border border-leaf-200/60">
+                  <CloudRain className="w-3.5 h-3.5 text-forest-700 flex-shrink-0" />
+                  <span className="font-semibold text-forest-900">Weather Intelligence:</span>
+                  <span>Advisory micro-climate forecast active for this equipment allocation window</span>
+                </div>
+
                 {/* State Transition Actions */}
+
                 <div className="pt-2 flex flex-wrap gap-2 justify-end border-t border-gray-100">
                   {/* Owner/Admin approval actions */}
                   {isOwnerOrAdmin && (booking.status === 'submitted' || booking.status === 'pending_approval') && (

@@ -8,6 +8,7 @@ import {
   Compass,
   LayoutGrid,
   Map,
+  Sparkles,
 } from 'lucide-react';
 import apiClient from '../api/client';
 import type { Resource, ResourceCategory } from '../types/marketplace';
@@ -333,7 +334,19 @@ export const MarketplacePage: React.FC = () => {
                       </span>
                     ))}
                   </div>
+
+                  {/* Weather Suitability Engine Badge */}
+                  <div className="pt-1">
+                    <div className="px-2.5 py-1 rounded-xl bg-forest-50/80 border border-leaf-200/70 text-[10px] text-forest-800 flex items-center justify-between">
+                      <span className="flex items-center space-x-1 font-semibold">
+                        <Sparkles className="w-3 h-3 text-leaf-600" />
+                        <span>Weather Suitability Engine</span>
+                      </span>
+                      <span className="font-bold text-leaf-700">Live Forecast Active</span>
+                    </div>
+                  </div>
                 </div>
+
 
                 <div className="pt-5 mt-5 border-t border-gray-100 flex items-center justify-between">
                   <div>

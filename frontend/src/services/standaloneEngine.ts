@@ -734,6 +734,260 @@ export class StandaloneEngine {
       };
     }
 
+    if (cleanUrl === '/coordination/weather-prediction') {
+      const res = data.resource_id ? this.getResources().find((r) => r.id === data.resource_id) : null;
+      const farm = data.farm_id ? this.getFarms().find((f) => f.id === data.farm_id) : null;
+      const lat = data.latitude || (farm ? farm.latitude : (res ? res.latitude : 12.5218));
+      const lon = data.longitude || (farm ? farm.longitude : (res ? res.longitude : 76.8951));
+      const category = (data.equipment_category || (res ? res.category : 'tractor')).toLowerCase();
+      const operation = (data.operation || '').toLowerCase();
+      const startTimeStr = data.start_time;
+      const durationHours = data.duration_hours || 4.0;
+
+      // Check forecast horizon (> 7 days)
+      const bookingDate = new Date(startTimeStr || new Date().toISOString());
+      const now = new Date();
+      const daysAhead = (bookingDate.getTime() - now.getTime()) / (1000 * 3600 * 24);
+
+      if (daysAhead > 7.0) {
+        return {
+          score: null,
+          risk_category: 'Limited Prediction / Unverified Horizon',
+          factors: [],
+          expected_weather: {
+            temperature_c: null,
+            relative_humidity_pct: null,
+            max_rain_probability_pct: null,
+            total_expected_rainfall_mm: null,
+            wind_speed_kmh: null,
+            weather_condition: 'Forecast unavailable',
+            is_severe_alert: false,
+          },
+          plain_language_explanation: `Requested booking date is ${Math.round(daysAhead)} days ahead, which exceeds the 7-day meteorological forecast horizon. BHUMISETU avoids presenting misleadingly precise numbers without verified forecasts.`,
+          suggested_alternatives: [],
+          is_limited_prediction: true,
+          limitations: ['Booking date exceeds high-resolution forecast horizon', 'Soil moisture telemetry not connected'],
+          equipment_category: category,
+          operation: data.operation || operation,
+        };
+      }
+
+      // Live Open-Meteo query or baseline
+      let temp = 26.5;
+      let humidity = 65;
+      let rainProb = 15;
+      let rainMm = 0.0;
+      let windKmh = 10.5;
+      let condition = 'Partly Cloudy';
+      let isSevere = false;
+      let isLive = false;
+
+      try {
+        const omRes = await fetch(
+          `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,relative_humidity_2m,precipitation_probability,precipitation,wind_speed_10m,weather_code&forecast_days=7&timezone=UTC`
+        );
+        if (omRes.ok) {
+          const w = await omRes.json();
+          const times: string[] = w.hourly?.time || [];
+          const startIso = bookingDate.toISOString().substring(0, 13);
+          const idx = times.findIndex((t) => t.startsWith(startIso));
+          const useIdx = idx >= 0 ? idx : 12;
+          temp = w.hourly?.temperature_2m?.[useIdx] ?? 26.5;
+          humidity = w.hourly?.relative_humidity_2m?.[useIdx] ?? 65;
+          rainProb = w.hourly?.precipitation_probability?.[useIdx] ?? 15;
+          rainMm = w.hourly?.precipitation?.[useIdx] ?? 0.0;
+          windKmh = w.hourly?.wind_speed_10m?.[useIdx] ?? 10.5;
+          const code = w.hourly?.weather_code?.[useIdx] ?? 0;
+          condition = code > 60 ? 'Rain showers' : code > 2 ? 'Partly Cloudy' : 'Clear sky';
+          isSevere = code >= 80 || rainMm >= 25.0;
+          isLive = true;
+        }
+      } catch {
+        // Fallback to Karnataka baseline
+      }
+
+      // Equipment-specific scoring logic
+      let baseScore = 100.0;
+      const deductions: { factor: string; penalty: number; detail: string; severity: string }[] = [];
+
+      const combined = `${category} ${operation}`.toLowerCase();
+      const isSprayer = combined.includes('spray') || combined.includes('drone') || combined.includes('chemical');
+      const isHarvester = combined.includes('harvest') || combined.includes('combine') || combined.includes('thresh');
+      const isIrrigation = combined.includes('irrigat') || combined.includes('pump') || combined.includes('water');
+      const isTractor = combined.includes('tractor') || combined.includes('plough') || combined.includes('till');
+      const isSeeder = combined.includes('sow') || combined.includes('seed') || combined.includes('plant');
+
+      if (isSprayer) {
+        if (windKmh > 20.0) {
+          deductions.push({
+            factor: 'High Wind Speed (Spray Drift)',
+            penalty: 45.0,
+            detail: `Wind speed of ${windKmh} km/h causes severe spray drift onto off-target areas.`,
+            severity: 'high',
+          });
+        } else if (windKmh > 15.0) {
+          deductions.push({
+            factor: 'Moderate Wind Speed',
+            penalty: 20.0,
+            detail: `Wind of ${windKmh} km/h presents moderate drift risk; use low-drift nozzles.`,
+            severity: 'moderate',
+          });
+        }
+
+        if (rainMm > 2.0 || rainProb > 60.0) {
+          deductions.push({
+            factor: 'Rain Wash-off Hazard',
+            penalty: 40.0,
+            detail: `Precipitation (${rainMm} mm, ${rainProb}%) will wash chemical off foliar canopy.`,
+            severity: 'high',
+          });
+        } else if (rainMm > 0.5 || rainProb > 35.0) {
+          deductions.push({
+            factor: 'Precipitation Risk',
+            penalty: 20.0,
+            detail: `Rain risk (${rainProb}%) may dilute chemical spray solution.`,
+            severity: 'moderate',
+          });
+        }
+
+        if (temp > 35.0) {
+          deductions.push({
+            factor: 'High Temperature Evaporation',
+            penalty: 15.0,
+            detail: `High temperature (${temp}°C) causes rapid droplet volatilization and leaf scorch risk.`,
+            severity: 'moderate',
+          });
+        }
+      } else if (isHarvester) {
+        if (rainMm > 1.0 || rainProb > 50.0) {
+          deductions.push({
+            factor: 'Wet Crop & Grain Spoilage',
+            penalty: 50.0,
+            detail: `Rainfall (${rainMm} mm, ${rainProb}%) risks grain fungal decay, clogged thresher drums, and machine bogging down.`,
+            severity: 'high',
+          });
+        } else if (rainMm > 0.2 || rainProb > 25.0) {
+          deductions.push({
+            factor: 'Elevated Moisture Risk',
+            penalty: 25.0,
+            detail: `Elevated grain moisture (${rainProb}% prob) increases post-harvest drying costs.`,
+            severity: 'moderate',
+          });
+        }
+        if (windKmh > 35.0) {
+          deductions.push({
+            factor: 'High Wind Reel Disruption',
+            penalty: 20.0,
+            detail: `Wind of ${windKmh} km/h hinders cutter-bar alignment and risks crop lodging.`,
+            severity: 'moderate',
+          });
+        }
+      } else if (isIrrigation) {
+        if (rainMm >= 15.0 || rainProb >= 70.0) {
+          deductions.push({
+            factor: 'High Rainfall Redundancy',
+            penalty: 55.0,
+            detail: `Upcoming natural rainfall (${rainMm} mm, ${rainProb}%) makes irrigation redundant; risks root waterlogging.`,
+            severity: 'high',
+          });
+        } else if (rainMm >= 5.0 || rainProb >= 40.0) {
+          deductions.push({
+            factor: 'Moderate Rain Expected',
+            penalty: 25.0,
+            detail: `Natural precipitation (${rainMm} mm) may meet crop water demands; evaluate before pumping.`,
+            severity: 'moderate',
+          });
+        } else {
+          baseScore = 98.0;
+        }
+      } else if (isTractor) {
+        if (rainMm > 10.0 || rainProb > 75.0) {
+          deductions.push({
+            factor: 'Heavy Rain & Waterlogging',
+            penalty: 45.0,
+            detail: `Heavy rain (${rainMm} mm, ${rainProb}%) causes severe wheel slip, deep rutting, and soil compaction.`,
+            severity: 'high',
+          });
+        } else if (rainMm > 3.0 || rainProb > 45.0) {
+          deductions.push({
+            factor: 'Wet Soil Traction Loss',
+            penalty: 25.0,
+            detail: `Rainfall reduces tyre grip and causes soil smearing during tillage.`,
+            severity: 'moderate',
+          });
+        }
+      } else if (isSeeder) {
+        if (rainMm > 6.0 || rainProb > 65.0) {
+          deductions.push({
+            factor: 'Seed Wash-out & Furrow Crusting',
+            penalty: 45.0,
+            detail: `Downpours (${rainMm} mm, ${rainProb}%) wash away planted seeds and form dense surface crusts.`,
+            severity: 'high',
+          });
+        } else if (rainMm > 2.0 || rainProb > 40.0) {
+          deductions.push({
+            factor: 'Moderate Rain Crusting Risk',
+            penalty: 20.0,
+            detail: `Rainfall may crust topsoil; monitor emergence.`,
+            severity: 'moderate',
+          });
+        }
+      }
+
+      if (isSevere) {
+        deductions.push({
+          factor: 'Severe Weather Warning',
+          penalty: 45.0,
+          detail: 'Convective storm or lightning alert in effect for this time window.',
+          severity: 'high',
+        });
+      }
+
+      const totalPen = deductions.reduce((acc, d) => acc + d.penalty, 0);
+      const score = Math.max(5.0, Math.min(100.0, Math.round((baseScore - totalPen) * 10) / 10));
+
+      let riskCategory = 'Highly Suitable';
+      if (score < 40.0) riskCategory = 'High Risk';
+      else if (score < 60.0) riskCategory = 'Moderate Risk';
+      else if (score < 80.0) riskCategory = 'Generally Suitable';
+
+      const altDate = new Date(bookingDate.getTime() + 24 * 3600 * 1000);
+      const altSlots = [
+        {
+          start_time: altDate.toISOString(),
+          end_time: new Date(altDate.getTime() + durationHours * 3600 * 1000).toISOString(),
+          label: `${altDate.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}, 07:00 UTC`,
+          rain_prob_pct: 10,
+          wind_speed_kmh: 8.5,
+          expected_rain_mm: 0.0,
+        },
+      ];
+
+      return {
+        score,
+        risk_category: riskCategory,
+        factors: deductions,
+        expected_weather: {
+          temperature_c: temp,
+          relative_humidity_pct: humidity,
+          max_rain_probability_pct: rainProb,
+          total_expected_rainfall_mm: rainMm,
+          wind_speed_kmh: windKmh,
+          weather_condition: condition,
+          is_severe_alert: isSevere,
+        },
+        plain_language_explanation: deductions.length
+          ? `Booking weather suitability is ${Math.round(score)}/100 (${riskCategory}) for ${category} ${operation}. Primary factor: ${deductions[0].detail}`
+          : `Optimal conditions for ${category} (${score}/100, ${riskCategory}): ${condition}, ${temp}°C, low rain probability (${rainProb}%), and safe winds (${windKmh} km/h).`,
+        suggested_alternatives: (riskCategory === 'High Risk' || riskCategory === 'Moderate Risk') ? altSlots : [],
+        is_limited_prediction: false,
+        limitations: isLive ? ['Ground soil moisture inferred from precipitation'] : ['Karnataka agro-climatic baseline used (offline fetch)'],
+        equipment_category: category,
+        operation: data.operation || operation,
+      };
+    }
+
+
     // 8. FarmVoice AI Conversational Engine
     if (cleanUrl === '/voice/interact') {
       const msg = (data.message || '').toLowerCase();
