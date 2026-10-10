@@ -49,11 +49,23 @@ Unlike simple listing directories, BHUMISETU operates as an **intelligent, confl
 - **One-Click Booking**: Click any marker to view details and open the booking flow.
 - **Haversine Distance**: Computes exact road distance between farmer and equipment owner.
 
-### 4. 🌦️ Live Agricultural Weather Integration
-- **Open-Meteo Integration**: Real-time hourly and 3-day meteorological forecasts for Karnataka coordinates (Mandya `12.5218° N`, `76.8951° E`).
-- **Weather-Aware Inputs**: Rainfall mm and precipitation probability feed directly into the coordination engine.
+### 5. 🌦️ Weather-Based Equipment Booking Prediction (Add-On)
+- **0–100 Booking Weather Suitability Score**:
+  - `80–100`: **Highly Suitable** (favorable micro-climate conditions).
+  - `60–79`: **Generally Suitable** (operable with precautionary measures).
+  - `40–59`: **Moderate Risk** (weather risks detected; review before booking).
+  - `0–39`: **High Risk** (high weather hazard; shifting booking window advised).
+- **Equipment-Specific Agronomic Rules**:
+  - *Sprayers & Drones*: Strict wind speed limits (> 20 km/h spray drift hazard, -45 pts) and rain wash-off risk within chemical uptake window (-40 pts).
+  - *Combine Harvesters*: High rain sensitivity preventing wet grain rot, clogged thresher drums, and machinery bogging down (-50 pts).
+  - *Tractors*: Rainfall compaction, wheel slip, and deep rutting prevention (-45 pts).
+  - *Irrigation Pumps*: Inverted rainfall logic (heavy rain makes pumping redundant and risks root waterlogging, -55 pts; dry weather is 98-100 optimal).
+  - *Seeders & Planters*: Seed wash-out and furrow crusting prevention (-45 pts).
+- **1-Click Cleaner Shift Recommendations**: Discovers low-risk alternative windows (< 30% rain, < 18 km/h wind) over the next 48 hours with 1-click slot application.
+- **Zero Fabrication**: Handles dates beyond 7-day forecast horizon with transparent `is_limited_prediction: true` baseline disclosure; never invents weather or soil data.
+- **Advisory Non-Blocking Guardrail**: Informs farmer decisions on marketplace listings, booking dialogs, and summary screens without restricting booking autonomy.
 
-### 5. 👥 Role-Based Dashboards & Immutable Audit Trail
+### 6. 👥 Role-Based Dashboards & Immutable Audit Trail
 - **Farmer Operations Hub (`/dashboard`)**: Managed acreage, live weather forecast widget, active scheduling pipeline, and one-click FarmVoice launcher.
 - **Equipment Owner Console (`/owner`)**: Fleet inventory, incoming requests with one-click **Approve** and **Decline** controls, and total revenue tracking.
 - **Administrator Security & Audit Dashboard (`/admin`)**: Immutable event logs table (`AuditLog`) tracking all user logins, bookings, and voice transactions.
@@ -62,11 +74,12 @@ Unlike simple listing directories, BHUMISETU operates as an **intelligent, confl
 
 ## 🛠️ Technology Stack
 
-- **Backend**: Python 3.13, FastAPI, SQLAlchemy 2.0, Alembic, Pydantic v2, SQLite WAL (PostgreSQL switchable), Passlib/Bcrypt, JWT.
+- **Backend**: Python 3.13, FastAPI, SQLAlchemy 2.0, Alembic, Pydantic v2, SQLite WAL (PostgreSQL switchable), Passlib/Bcrypt, JWT, HTTPX.
 - **Frontend**: React 19, TypeScript, Vite, Tailwind CSS v4, Lucide Icons, Leaflet, Axios.
 - **AI & Voice**: Google Gemini Live API, Web Speech API (STT & TTS).
 - **Weather**: Open-Meteo Meteorological Service.
-- **Testing**: Pytest (14/14 tests passing), Vitest (13/13 tests passing across 6 test suites).
+- **Testing**: Pytest (22/22 tests passing), Vitest (17/17 tests passing across 7 test suites).
+
 
 ---
 
