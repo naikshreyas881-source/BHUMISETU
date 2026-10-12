@@ -10,6 +10,7 @@ from app.api.deps import get_current_user
 from app.models.user import User, UserRole
 from app.models.marketplace import Resource, Booking, BookingStatus, Farm, PricingUnit
 from app.schemas.marketplace import BookingCreate, BookingResponse, BookingStatusUpdate
+from app.coordination.auto_confirm import evaluate_auto_confirmation
 
 router = APIRouter()
 
@@ -29,7 +30,7 @@ def create_booking_request(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Submit an agricultural equipment or service request with strict idempotency."""
+    """Submit an agricultural equipment or service request with strict idempotency and 10-point auto-confirmation evaluation."""
     # 1. Check idempotency key to prevent duplicate booking submissions
     existing_key = db.query(Booking).filter(Booking.idempotency_key == booking_in.idempotency_key).first()
     if existing_key:
@@ -41,6 +42,7 @@ def create_booking_request(
         raise HTTPException(status_code=404, detail="Selected resource is unavailable or does not exist")
 
     # 3. Check farm ownership if farm_id specified
+    farm = None
     if booking_in.farm_id:
         farm = db.query(Farm).filter(Farm.id == booking_in.farm_id).first()
         if not farm or (farm.owner_id != current_user.id and current_user.role != UserRole.ADMINISTRATOR):
@@ -53,11 +55,42 @@ def create_booking_request(
         days = max(1.0, booking_in.duration_hours / 24.0)
         estimated_cost = round(days * resource.price_per_unit, 2)
     elif resource.pricing_unit == PricingUnit.PER_ACRE and booking_in.farm_id:
-        farm = db.query(Farm).filter(Farm.id == booking_in.farm_id).first()
-        acres = farm.size_acres if farm else 1.0
+        farm_rec = db.query(Farm).filter(Farm.id == booking_in.farm_id).first()
+        acres = farm_rec.size_acres if farm_rec else 1.0
         estimated_cost = round(acres * resource.price_per_unit, 2)
     else:  # default per hour
         estimated_cost = round(booking_in.duration_hours * resource.price_per_unit, 2)
+
+    # 5. Concurrency check: Reject if there is an existing CONFIRMED booking overlapping this slot
+    confirmed_conflict = (
+        db.query(Booking)
+        .filter(
+            Booking.resource_id == resource.id,
+            Booking.status == BookingStatus.CONFIRMED,
+            Booking.start_time < end_time,
+            Booking.end_time > booking_in.start_time,
+        )
+        .first()
+    )
+    if confirmed_conflict:
+        alt_time = confirmed_conflict.end_time + timedelta(hours=1)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Scheduling conflict: Machinery '{resource.name}' is already confirmed for booking #{confirmed_conflict.id} until {confirmed_conflict.end_time.strftime('%Y-%m-%d %H:%M')}. Suggested alternative start: {alt_time.strftime('%Y-%m-%d %H:%M')}.",
+        )
+
+    # 6. Evaluate 10-point Authoritative Intelligent Auto-Confirmation
+    decision = evaluate_auto_confirmation(
+        db=db,
+        current_user=current_user,
+        resource=resource,
+        farm=farm,
+        operation=booking_in.operation,
+        start_time=booking_in.start_time,
+        duration_hours=booking_in.duration_hours,
+    )
+
+    final_status = BookingStatus.CONFIRMED if decision.should_confirm else BookingStatus.SUBMITTED
 
     booking = Booking(
         farmer_id=current_user.id,
@@ -68,8 +101,12 @@ def create_booking_request(
         end_time=end_time,
         duration_hours=booking_in.duration_hours,
         estimated_cost=estimated_cost,
-        status=BookingStatus.SUBMITTED,
+        status=final_status,
         idempotency_key=booking_in.idempotency_key,
+        auto_confirmed=decision.should_confirm,
+        confirmation_reason=decision.reason,
+        priority_score=decision.priority_score,
+        weather_suitability_score=decision.weather_suitability_score,
         notes=booking_in.notes,
     )
     db.add(booking)
@@ -82,7 +119,10 @@ def create_booking_request(
         user_id=current_user.id,
         resource_type="BOOKING",
         resource_id=str(booking.id),
-        details=f"Farmer {current_user.full_name} booked {resource.name} for {booking.duration_hours}h. Cost: Rs.{estimated_cost}",
+        details=(
+            f"Farmer {current_user.full_name} booked {resource.name} for {booking.duration_hours}h. "
+            f"Status: {final_status.value} (Auto-confirmed: {decision.should_confirm}). Cost: Rs.{estimated_cost}"
+        ),
     )
 
     return serialize_booking(booking)

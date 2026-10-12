@@ -124,6 +124,7 @@ def create_resource(
         is_verified=resource_in.is_verified,
         is_active=resource_in.is_active,
         is_demo=resource_in.is_demo,
+        auto_confirm_enabled=resource_in.auto_confirm_enabled,
         image_url=resource_in.image_url,
     )
     db.add(resource)

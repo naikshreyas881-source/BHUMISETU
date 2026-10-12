@@ -18,6 +18,7 @@ class WeatherPredictionResult:
         limitations: List[str],
         equipment_category: str,
         operation: str,
+        suitability_level: str = "Suitable conditions",
     ):
         self.score = score
         self.risk_category = risk_category
@@ -29,11 +30,13 @@ class WeatherPredictionResult:
         self.limitations = limitations
         self.equipment_category = equipment_category
         self.operation = operation
+        self.suitability_level = suitability_level
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "score": self.score,
             "risk_category": self.risk_category,
+            "suitability_level": self.suitability_level,
             "factors": self.factors,
             "expected_weather": self.expected_weather,
             "plain_language_explanation": self.plain_language_explanation,
@@ -76,7 +79,11 @@ def evaluate_weather_booking_suitability(
     """
     Evaluates weather suitability for an equipment booking using equipment-specific agronomic rules.
     Base score is 100 with explainable deductions based on validated agricultural thresholds.
-    Never fabricates values if weather data is unavailable or beyond the forecast horizon.
+    Distinguishes:
+    - Suitable conditions (80–100)
+    - Potentially unsuitable conditions (40–79)
+    - Unsafe or prohibited conditions (0–39 or severe limits)
+    - Insufficient forecast information (None)
     """
     eq_type = normalize_equipment_type(equipment_category, operation)
 
@@ -109,6 +116,7 @@ def evaluate_weather_booking_suitability(
             limitations=[reason, "Field soil moisture not modeled due to lack of ground telemetry sensors."],
             equipment_category=equipment_category or "machinery",
             operation=operation,
+            suitability_level="Insufficient forecast information",
         )
 
     # Extract verified forecast parameters
@@ -130,37 +138,65 @@ def evaluate_weather_booking_suitability(
     # --- Equipment-Specific Rules ---
 
     if eq_type == "sprayer":
-        # 1. Wind speed: drift hazard
-        if wind_kmh > 20.0:
-            deductions.append({
-                "factor": "High Wind Speed (Spray Drift)",
-                "penalty": 45.0,
-                "detail": f"Forecasted wind of {wind_kmh} km/h exceeds the 20 km/h threshold. Severe risk of chemical drift onto adjacent plots, water bodies, or non-target crops.",
-                "severity": "high",
-            })
-        elif wind_kmh > 15.0:
-            deductions.append({
-                "factor": "Moderate Wind Speed (Spray Drift)",
-                "penalty": 20.0,
-                "detail": f"Forecasted wind of {wind_kmh} km/h is elevated (15–20 km/h). Requires low-drift anti-drift nozzles and lower boom heights.",
-                "severity": "moderate",
-            })
+        is_drone = "drone" in f"{(equipment_category or '').lower()} {operation.lower()}"
+        if is_drone:
+            # 1. UAV Wind Speed Limits: strictly 20 km/h regulatory & manufacturer cutoff
+            if wind_kmh > 20.0:
+                deductions.append({
+                    "factor": "High Wind Speed (Spray Drift & Drone Safety Limit)",
+                    "penalty": 65.0,
+                    "detail": f"Forecasted wind of {wind_kmh} km/h strictly exceeds drone manufacturer and flight safety threshold (20 km/h). Prohibited conditions with severe spray drift.",
+                    "severity": "prohibited",
+                })
+            elif wind_kmh > 15.0:
+                deductions.append({
+                    "factor": "Moderate Wind Speed (Spray Drift)",
+                    "penalty": 25.0,
+                    "detail": f"Wind speeds of {wind_kmh} km/h degrade aerial flight stability and spray swath precision.",
+                    "severity": "moderate",
+                })
 
-        # 2. Rain wash-off
-        if rain_mm > 2.0 or rain_prob > 60.0:
-            deductions.append({
-                "factor": "Rain Wash-off Hazard",
-                "penalty": 40.0,
-                "detail": f"Rainfall of {rain_mm} mm (probability {rain_prob}%) will wash agrochemicals off crop foliage before systemic or contact uptake.",
-                "severity": "high",
-            })
-        elif rain_mm > 0.5 or rain_prob > 35.0:
-            deductions.append({
-                "factor": "Precipitation Risk",
-                "penalty": 20.0,
-                "detail": f"Rain probability {rain_prob}% (expected {rain_mm} mm) may dilute applied solution and reduce product efficacy.",
-                "severity": "moderate",
-            })
+            # 2. UAV Precipitation: electronics and rotor hazard (0 mm tolerance)
+            if rain_mm > 0.0 or rain_prob > 35.0:
+                deductions.append({
+                    "factor": "Precipitation Wash-off & Drone Rotor Hazard",
+                    "penalty": 60.0,
+                    "detail": f"Rainfall expected ({rain_mm} mm, {rain_prob}% prob) threatens non-waterproof drone avionics and causes chemical wash-off.",
+                    "severity": "prohibited",
+                })
+        else:
+            # Standard boom / tractor-mounted sprayer
+            # 1. Wind speed: drift hazard
+            if wind_kmh > 20.0:
+                deductions.append({
+                    "factor": "High Wind Speed (Spray Drift)",
+                    "penalty": 45.0,
+                    "detail": f"Forecasted wind of {wind_kmh} km/h exceeds the 20 km/h threshold. Severe risk of chemical drift onto adjacent plots, water bodies, or non-target crops.",
+                    "severity": "high",
+                })
+            elif wind_kmh > 15.0:
+                deductions.append({
+                    "factor": "Moderate Wind Speed (Spray Drift)",
+                    "penalty": 20.0,
+                    "detail": f"Forecasted wind of {wind_kmh} km/h is elevated (15–20 km/h). Requires low-drift anti-drift nozzles and lower boom heights.",
+                    "severity": "moderate",
+                })
+
+            # 2. Rain wash-off
+            if rain_mm > 2.0 or rain_prob > 60.0:
+                deductions.append({
+                    "factor": "Rain Wash-off Hazard",
+                    "penalty": 40.0,
+                    "detail": f"Rainfall of {rain_mm} mm (probability {rain_prob}%) will wash agrochemicals off crop foliage before systemic or contact uptake.",
+                    "severity": "high",
+                })
+            elif rain_mm > 0.5 or rain_prob > 35.0:
+                deductions.append({
+                    "factor": "Precipitation Risk",
+                    "penalty": 20.0,
+                    "detail": f"Rain probability {rain_prob}% (expected {rain_mm} mm) may dilute applied solution and reduce product efficacy.",
+                    "severity": "moderate",
+                })
 
         # 3. High temperature volatilization
         if temp_c > 35.0:
@@ -298,20 +334,25 @@ def evaluate_weather_booking_suitability(
     total_penalty = sum(d["penalty"] for d in deductions)
     final_score = max(5.0, min(100.0, round(base_score - total_penalty, 1)))
 
-    # Determine risk band (Requirement 1)
-    if final_score >= 80.0:
+    # Determine risk band
+    has_prohibited = any(d.get("severity") == "prohibited" for d in deductions)
+    if has_prohibited or final_score < 40.0:
+        risk_category = "High Risk"
+        suitability_level = "Unsafe or prohibited conditions"
+    elif final_score >= 80.0:
         risk_category = "Highly Suitable"
+        suitability_level = "Suitable conditions"
     elif final_score >= 60.0:
         risk_category = "Generally Suitable"
-    elif final_score >= 40.0:
-        risk_category = "Moderate Risk"
+        suitability_level = "Suitable conditions"
     else:
-        risk_category = "High Risk"
+        risk_category = "Moderate Risk"
+        suitability_level = "Potentially unsuitable conditions"
 
     # Build plain-language explanation
     explanation_parts = []
     explanation_parts.append(
-        f"Booking suitability score is {int(round(final_score))}/100 ({risk_category}) for {eq_type.replace('_', ' ').title()} operation ({operation})."
+        f"Booking suitability score is {int(round(final_score))}/100 ({risk_category} • {suitability_level}) for {eq_type.replace('_', ' ').title()} operation ({operation})."
     )
 
     if deductions:
@@ -349,4 +390,5 @@ def evaluate_weather_booking_suitability(
         limitations=limitations,
         equipment_category=equipment_category or eq_type,
         operation=operation,
+        suitability_level=suitability_level,
     )

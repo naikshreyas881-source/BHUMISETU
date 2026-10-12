@@ -65,6 +65,7 @@ export interface Resource {
   is_verified: boolean;
   is_active: boolean;
   is_demo: boolean;
+  auto_confirm_enabled?: boolean;
   rating: number;
   total_reviews: number;
   image_url?: string;
@@ -85,6 +86,10 @@ export interface Booking {
   estimated_cost: number;
   status: BookingStatus;
   idempotency_key: string;
+  auto_confirmed?: boolean;
+  confirmation_reason?: string;
+  priority_score?: number;
+  weather_suitability_score?: number;
   notes?: string;
   rejection_reason?: string;
   resource_name?: string;

@@ -3,6 +3,8 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider } from './context/AuthContext';
 import { LanguageProvider } from './i18n/LanguageContext';
 import { LocationProvider } from './context/LocationContext';
+import { OfflineProvider } from './context/OfflineContext';
+import { OfflineBanner } from './components/common/OfflineBanner';
 import { Header } from './components/layout/Header';
 import { LocationBar } from './components/common/LocationBar';
 import { Footer } from './components/layout/Footer';
@@ -22,13 +24,17 @@ export const App: React.FC = () => {
     <LanguageProvider>
       <LocationProvider>
         <AuthProvider>
-          <Router basename={import.meta.env.BASE_URL}>
-            <div className="flex flex-col min-h-screen bg-[#faf9f6] text-gray-900 font-sans selection:bg-leaf-200">
-              {/* Header visible on every single page with BHUMISETU branding & tagline */}
-              <Header />
+          <OfflineProvider>
+            <Router basename={import.meta.env.BASE_URL}>
+              <div className="flex flex-col min-h-screen bg-[#faf9f6] text-gray-900 font-sans selection:bg-leaf-200">
+                {/* Header visible on every single page with BHUMISETU branding & tagline */}
+                <Header />
 
-              {/* Live Location & GPS Tracking Bar */}
-              <LocationBar />
+                {/* Live Offline Mode & Synchronization Status Banner */}
+                <OfflineBanner />
+
+                {/* Live Location & GPS Tracking Bar */}
+                <LocationBar />
 
               {/* Main content body */}
               <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -98,9 +104,10 @@ export const App: React.FC = () => {
             <Footer />
           </div>
         </Router>
-      </AuthProvider>
-    </LocationProvider>
-  </LanguageProvider>
+      </OfflineProvider>
+    </AuthProvider>
+  </LocationProvider>
+</LanguageProvider>
 );
 };
 

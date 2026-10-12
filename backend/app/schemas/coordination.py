@@ -35,8 +35,14 @@ class PriorityScoreRequest(BaseModel):
     rain_probability_pct: Optional[float] = Field(None, ge=0.0, le=100.0)
     severe_weather_alert: bool = False
     crop_stage: Optional[str] = None
-    farm_size_acres: Optional[float] = Field(None, gt=0.0)
+    waiting_time_hours: Optional[float] = Field(None, ge=0.0)
     deadline_hours: Optional[float] = Field(None, gt=0.0)
+    operational_feasibility: Optional[float] = Field(None, ge=0.0, le=10.0)
+    equipment_category: Optional[str] = None
+    operation: Optional[str] = None
+    wind_speed_kmh: Optional[float] = Field(None, ge=0.0)
+    total_rainfall_mm: Optional[float] = Field(None, ge=0.0)
+    farm_size_acres: Optional[float] = Field(None, gt=0.0)
     soil_moisture_suitable: Optional[bool] = None
 
 
@@ -103,6 +109,7 @@ class WeatherBookingPredictionRequest(BaseModel):
 class WeatherBookingPredictionResponse(BaseModel):
     score: Optional[float] = None
     risk_category: str
+    suitability_level: Optional[str] = "Suitable conditions"
     factors: List[Dict[str, Any]]
     expected_weather: Dict[str, Any]
     plain_language_explanation: str

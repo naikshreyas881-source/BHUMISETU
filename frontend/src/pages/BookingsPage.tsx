@@ -4,18 +4,22 @@ import {
   Clock,
   CheckCircle2,
   XCircle,
-  AlertCircle,
   RefreshCw,
   Ban,
   CloudRain,
   Sparkles,
+  CloudOff,
 } from 'lucide-react';
 import apiClient from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { useOffline } from '../context/OfflineContext';
+import { OfflineRequestsDrawer } from '../components/common/OfflineRequestsDrawer';
 import type { Booking, BookingStatus } from '../types/marketplace';
 
 export const BookingsPage: React.FC = () => {
   const { user } = useAuth();
+  const { offlineBookings, isOnline, isBackendReachable, triggerSync, isSyncing } = useOffline();
+  const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -126,6 +130,13 @@ export const BookingsPage: React.FC = () => {
         </button>
       </div>
 
+      {error && (
+        <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm flex items-center space-x-2">
+          <XCircle className="w-4 h-4 flex-shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+
       {actionNotice && (
         <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm flex items-center space-x-2">
           <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
@@ -133,12 +144,58 @@ export const BookingsPage: React.FC = () => {
         </div>
       )}
 
-      {error && (
-        <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm flex items-center space-x-2">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          <span>{error}</span>
+      {/* Offline Requests Section */}
+      {offlineBookings.length > 0 && (
+        <div className="bg-amber-50/80 border border-amber-300 rounded-3xl p-5 shadow-sm space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center font-bold">
+                <CloudOff className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center space-x-2">
+                  <h3 className="font-extrabold text-amber-950 text-base">
+                    Offline Requests Queue ({offlineBookings.length})
+                  </h3>
+                  <span className="text-[11px] font-bold bg-amber-200/80 text-amber-900 px-2 py-0.5 rounded-full">
+                    Stored on Device
+                  </span>
+                </div>
+                <p className="text-xs text-amber-800">
+                  Requests created offline remain safe on this device. They will be validated against live availability when online.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                onClick={() => setIsDrawerOpen(true)}
+                className="px-3.5 py-1.5 bg-white hover:bg-amber-100 border border-amber-300 rounded-xl text-xs font-bold text-amber-900 shadow-sm transition-colors cursor-pointer"
+              >
+                Inspect & Manage Queue
+              </button>
+              {isOnline && isBackendReachable && (
+                <button
+                  type="button"
+                  onClick={() => triggerSync()}
+                  disabled={isSyncing}
+                  className="flex items-center space-x-1.5 px-3.5 py-1.5 bg-leaf-600 hover:bg-leaf-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                  <span>{isSyncing ? 'Syncing...' : 'Sync With Server'}</span>
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       )}
+
+      {/* Offline Requests Drawer Modal */}
+      <OfflineRequestsDrawer
+        isOpen={isDrawerOpen}
+        onClose={() => setIsDrawerOpen(false)}
+      />
 
       {/* Bookings List */}
       {isLoading ? (

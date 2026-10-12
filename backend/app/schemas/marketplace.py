@@ -84,6 +84,7 @@ class ResourceBase(BaseModel):
     is_verified: bool = True
     is_active: bool = True
     is_demo: bool = False
+    auto_confirm_enabled: bool = False
     image_url: Optional[str] = None
 
 
@@ -132,6 +133,10 @@ class BookingResponse(BaseModel):
     estimated_cost: float
     status: BookingStatus
     idempotency_key: str
+    auto_confirmed: bool = False
+    confirmation_reason: Optional[str] = None
+    priority_score: Optional[float] = None
+    weather_suitability_score: Optional[float] = None
     notes: Optional[str] = None
     rejection_reason: Optional[str] = None
     created_at: datetime

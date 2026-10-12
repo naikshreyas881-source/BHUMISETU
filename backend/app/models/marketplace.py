@@ -108,6 +108,7 @@ class Resource(Base):
     is_verified = Column(Boolean, default=True, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     is_demo = Column(Boolean, default=False, nullable=False)  # Label demo seed data
+    auto_confirm_enabled = Column(Boolean, default=False, nullable=False)  # Instant automatic booking policy
     rating = Column(Float, default=4.8, nullable=False)
     total_reviews = Column(Integer, default=0, nullable=False)
     image_url = Column(String(500), nullable=True)
@@ -153,6 +154,10 @@ class Booking(Base):
     estimated_cost = Column(Float, nullable=False)
     status = Column(Enum(BookingStatus), default=BookingStatus.SUBMITTED, nullable=False, index=True)
     idempotency_key = Column(String(100), unique=True, index=True, nullable=False)
+    auto_confirmed = Column(Boolean, default=False, nullable=False)
+    confirmation_reason = Column(String(500), nullable=True)
+    priority_score = Column(Float, nullable=True)
+    weather_suitability_score = Column(Float, nullable=True)
     notes = Column(Text, nullable=True)
     rejection_reason = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)

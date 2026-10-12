@@ -588,6 +588,10 @@ export class StandaloneEngine {
           status: 'submitted' as BookingStatus,
           idempotency_key: data.idempotency_key || `booking_${Date.now()}`,
           notes: data.notes || '',
+          auto_confirmed: false,
+          confirmation_reason: 'Awaiting equipment owner manual review and confirmation.',
+          priority_score: 78.5,
+          weather_suitability_score: 85.0,
           farmer_name: users[0].full_name,
           resource_name: res.name,
           created_at: nowStr,
@@ -747,6 +751,12 @@ export class StandaloneEngine {
             explanation: `Field impact for ${acres} Acres agricultural land.`,
             data_source: 'Farm parcel registry',
           },
+          waiting_time: {
+            score: impactScore,
+            max_weight: 10.0,
+            explanation: `Waiting queue duration and fairness prioritization.`,
+            data_source: 'Coordination scheduling queue',
+          },
           deadline_proximity: {
             score: deadlineScore,
             max_weight: 10.0,
@@ -758,6 +768,12 @@ export class StandaloneEngine {
             max_weight: 10.0,
             explanation: `Favorable soil trafficability and access road passability.`,
             data_source: 'Agronomic regional baseline',
+          },
+          operational_feasibility: {
+            score: soilScore,
+            max_weight: 10.0,
+            explanation: `Machinery operational feasibility and field access conditions.`,
+            data_source: 'Agronomic operational assessment',
           },
         },
         plain_language_explanation: explanationStr,
@@ -1043,6 +1059,12 @@ export class StandaloneEngine {
         limitations: isLive ? ['Ground soil moisture inferred from precipitation'] : ['Karnataka agro-climatic baseline used (offline fetch)'],
         equipment_category: category,
         operation: data.operation || operation,
+        suitability_level:
+          riskCategory === 'Highly Suitable' || riskCategory === 'Generally Suitable'
+            ? 'Suitable conditions'
+            : riskCategory === 'Moderate Risk'
+            ? 'Potentially unsuitable conditions'
+            : 'Unsafe or prohibited conditions',
       };
     }
 

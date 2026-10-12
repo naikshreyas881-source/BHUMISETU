@@ -76,3 +76,53 @@ def test_farmvoice_interaction_and_booking_confirmation(client, db_session):
     conf_data = res_conf.json()
     assert "booking_id" in conf_data
     assert conf_data["status"] == "submitted"
+
+
+def test_farmvoice_advanced_offline_and_priority_intents(client):
+    # Register & login test user
+    email = "voice_advanced@bhumisetu.org"
+    client.post("/api/v1/auth/register", json={
+        "email": email,
+        "full_name": "Voice Advanced Farmer",
+        "phone_number": "+919876543210",
+        "role": "farmer",
+        "preferred_language": "en",
+        "password": "Password123"
+    })
+    login_res = client.post("/api/v1/auth/login", json={"email": email, "password": "Password123"})
+    token = login_res.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # 1. Voice offline sync status inquiry
+    res_sync = client.post("/api/v1/voice/interact", json={
+        "message": "Sync my pending offline requests",
+        "language": "en"
+    }, headers=headers)
+    assert res_sync.status_code == 200
+    assert res_sync.json()["action_taken"] == "OFFLINE_SYNC_STATUS"
+    assert "IndexedDB" in res_sync.json()["reply_text"]
+
+    # 2. Voice priority score inquiry
+    res_prio = client.post("/api/v1/voice/interact", json={
+        "message": "What is the priority score of my booking?",
+        "language": "en"
+    }, headers=headers)
+    assert res_prio.status_code == 200
+    assert res_prio.json()["action_taken"] == "PRIORITY_SCORE_INFO"
+    assert "AI priority score" in res_prio.json()["reply_text"]
+
+    # 3. Voice weather inquiry
+    res_weather = client.post("/api/v1/voice/interact", json={
+        "message": "Is the weather suitable for spraying?",
+        "language": "en"
+    }, headers=headers)
+    assert res_weather.status_code == 200
+    assert res_weather.json()["action_taken"] == "WEATHER_SUITABILITY_INFO"
+
+    # 4. Voice confirmation reason inquiry
+    res_conf = client.post("/api/v1/voice/interact", json={
+        "message": "Why was my request not confirmed?",
+        "language": "en"
+    }, headers=headers)
+    assert res_conf.status_code == 200
+    assert res_conf.json()["action_taken"] == "CONFIRMATION_EXPLANATION"

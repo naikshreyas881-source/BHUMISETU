@@ -65,8 +65,14 @@ def compute_priority_score(req: PriorityScoreRequest):
         rain_probability_pct=req.rain_probability_pct,
         severe_weather_alert=req.severe_weather_alert,
         crop_stage=req.crop_stage,
-        farm_size_acres=req.farm_size_acres,
+        waiting_time_hours=req.waiting_time_hours,
         deadline_hours=req.deadline_hours,
+        operational_feasibility=req.operational_feasibility,
+        equipment_category=req.equipment_category,
+        operation=req.operation,
+        wind_speed_kmh=req.wind_speed_kmh,
+        total_rainfall_mm=req.total_rainfall_mm,
+        farm_size_acres=req.farm_size_acres,
         soil_moisture_suitable=req.soil_moisture_suitable,
     )
     return PriorityScoreResponse(**result.to_dict())

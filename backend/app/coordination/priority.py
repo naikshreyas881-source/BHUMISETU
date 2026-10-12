@@ -40,8 +40,10 @@ class PriorityScoreResult:
     def to_dict(self) -> Dict[str, Any]:
         return {
             "overall_score": self.overall_score,
+            "priority_score": self.overall_score,
             "breakdown": {k: v.to_dict() for k, v in self.breakdown.items()},
             "plain_language_explanation": self.plain_language_explanation,
+            "explanation": self.plain_language_explanation,
             "data_sources_used": self.data_sources_used,
             "missing_information": self.missing_information,
             "limitations": self.limitations,
@@ -54,20 +56,27 @@ def calculate_priority_score(
     rain_probability_pct: Optional[float] = None,  # 0 to 100 float, or None if missing
     severe_weather_alert: bool = False,
     crop_stage: Optional[str] = None,  # "Sowing", "Vegetative", "Flowering", "Harvesting", or None
+    waiting_time_hours: Optional[float] = None,  # Queue age in hours
+    deadline_hours: Optional[float] = None,  # Hours until requested start/deadline
+    operational_feasibility: Optional[float] = None,  # 0 to 10 score
+    equipment_category: Optional[str] = None,
+    operation: Optional[str] = None,
+    wind_speed_kmh: Optional[float] = None,
+    total_rainfall_mm: Optional[float] = None,
     farm_size_acres: Optional[float] = None,
-    deadline_hours: Optional[float] = None,
     soil_moisture_suitable: Optional[bool] = None,
 ) -> PriorityScoreResult:
     """
-    Computes an explainable 0–100 priority score.
-    Factor Weights:
-    - Urgency: 25 pts
-    - Weather Risk: 25 pts
-    - Crop Readiness / Perishability: 20 pts
-    - Farm Impact / Acreage: 10 pts
-    - Deadline Proximity: 10 pts
-    - Agronomic Soil Window: 10 pts
-    Total: 100 pts.
+    Computes an authoritative, explainable 0–100 priority score for agricultural resource requests.
+    
+    Standard 6-Factor Model:
+    1. Agricultural Urgency:                                  25 pts
+    2. Weather-Related Risk or Opportunity:                    25 pts
+    3. Crop Readiness / Perishability:                         20 pts
+    4. Waiting Time (Queue Age):                               10 pts
+    5. Deadline Proximity:                                     10 pts
+    6. Operational Feasibility & Validated Constraints:        10 pts
+    Total:                                                    100 pts
     """
     breakdown: Dict[str, FactorScore] = {}
     data_sources: List[str] = []
@@ -77,14 +86,16 @@ def calculate_priority_score(
         "Tie-resolution: Ties are resolved chronologically by submission timestamp (first-come, first-served) and shorter travel distance.",
     ]
 
-    # Factor 1: Operational Urgency (Max 25 pts)
-    urgency_clean = urgency_level.lower().strip()
+    # -------------------------------------------------------------
+    # Factor 1: Agricultural Urgency (Max 25 pts)
+    # -------------------------------------------------------------
+    urgency_clean = (urgency_level or "medium").lower().strip()
     if urgency_clean == "critical":
         urg_score = 25.0
-        urg_expl = "Critical urgency specified: Immediate field intervention required."
+        urg_expl = "Critical agricultural urgency: Immediate intervention needed to prevent field or crop loss."
     elif urgency_clean == "high":
         urg_score = 18.0
-        urg_expl = "High urgency specified: Time-sensitive agronomic operation."
+        urg_expl = "High urgency: Time-sensitive agronomic operation."
     elif urgency_clean == "medium":
         urg_score = 10.0
         urg_expl = "Standard operational priority: Normal scheduled farming activities."
@@ -94,24 +105,81 @@ def calculate_priority_score(
     breakdown["urgency"] = FactorScore(urg_score, 25.0, urg_expl, "Farmer request input")
     data_sources.append("Farmer request declaration")
 
-    # Factor 2: Weather Risk (Max 25 pts)
+    # -------------------------------------------------------------
+    # Factor 2: Weather-Related Risk or Opportunity (Max 25 pts)
+    # -------------------------------------------------------------
+    eq_cat = (equipment_category or "").lower().strip()
+    op_clean = (operation or "").lower().strip()
+    is_sprayer = any(k in f"{eq_cat} {op_clean}" for k in ["spray", "drone", "chemical", "pesticide"])
+    is_irrigation = any(k in f"{eq_cat} {op_clean}" for k in ["irrigat", "pump", "water"])
+    is_harvester = any(k in f"{eq_cat} {op_clean}" for k in ["harvest", "combine", "thresh", "reap"])
+    is_drone = "drone" in f"{eq_cat} {op_clean}"
+
     if rain_probability_pct is not None:
         data_sources.append("Weather service forecast data")
-        if severe_weather_alert:
-            weather_score = 25.0
-            weather_expl = f"Severe storm alert in effect with {rain_probability_pct}% rain probability; critical pre-weather harvest/protection window."
+        
+        # Equipment-specific weather evaluation:
+        if is_irrigation:
+            # Inverted rain logic: if heavy rain is coming, irrigation need is low; if dry, urgency is high
+            if rain_probability_pct >= 60.0 or (total_rainfall_mm and total_rainfall_mm >= 10.0):
+                weather_score = 5.0
+                weather_expl = f"Rain forecast ({rain_probability_pct}% prob): Natural precipitation reduces irrigation demand."
+            elif rain_probability_pct <= 20.0:
+                weather_score = 25.0
+                weather_expl = f"Dry spell forecast ({rain_probability_pct}% rain prob): High irrigation priority to mitigate soil moisture deficit."
+            else:
+                weather_score = 15.0
+                weather_expl = f"Moderate rain probability ({rain_probability_pct}%): Standard scheduled irrigation window."
+        elif is_drone:
+            if wind_speed_kmh is not None and wind_speed_kmh > 20.0:
+                weather_score = 3.0
+                weather_expl = f"High wind speed ({wind_speed_kmh} km/h): Prohibited drone operational threshold (>20 km/h)."
+            elif rain_probability_pct > 30.0:
+                weather_score = 4.0
+                weather_expl = f"Precipitation risk ({rain_probability_pct}%): Drone electronic & chemical safety risk."
+            else:
+                weather_score = 25.0
+                weather_expl = "Optimal calm conditions for aerial UAV application."
+        elif is_sprayer:
+            if wind_speed_kmh is not None and wind_speed_kmh > 15.0:
+                weather_score = 5.0
+                weather_expl = f"Wind speed ({wind_speed_kmh} km/h) creates spray drift hazard and poor droplet deposition."
+            elif rain_probability_pct > 40.0:
+                weather_score = 8.0
+                weather_expl = f"Rain risk ({rain_probability_pct}%): Chemical wash-off before systemic absorption."
+            else:
+                weather_score = 25.0
+                weather_expl = f"Calm weather ({rain_probability_pct}% rain prob): Optimal spray application window."
+        elif is_harvester:
+            if severe_weather_alert or (rain_probability_pct > 65.0):
+                weather_score = 25.0
+                weather_expl = f"Imminent storm/rain threat ({rain_probability_pct}%): Emergency pre-weather harvest window to prevent crop lodging."
+            elif rain_probability_pct < 25.0:
+                weather_score = 20.0
+                weather_expl = f"Favorable dry harvesting weather ({rain_probability_pct}% rain prob)."
+            else:
+                weather_score = 12.0
+                weather_expl = f"Moderate rain probability ({rain_probability_pct}%): Monitor field moisture before cutting."
         else:
-            # Scale linearly from 0% (2 pts baseline) to 100% (25 pts)
-            weather_score = min(25.0, 2.0 + (rain_probability_pct / 100.0) * 23.0)
-            weather_expl = f"Incoming precipitation probability at {rain_probability_pct}%; operational window accounts for rain risk."
+            # General / Tractor
+            if severe_weather_alert:
+                weather_score = 25.0
+                weather_expl = f"Severe storm alert with {rain_probability_pct}% rain probability; critical pre-weather operation window."
+            else:
+                # Linear scale between 2 pts (dry) and 25 pts (critical pre-rain window)
+                weather_score = min(25.0, 2.0 + (rain_probability_pct / 100.0) * 23.0)
+                weather_expl = f"Precipitation probability at {rain_probability_pct}%; operational window accounts for micro-climate risk."
     else:
-        # Non-negotiable Rule: Do NOT invent missing data; do NOT treat missing weather as zero risk.
-        weather_score = 12.5  # Neutral midpoint baseline
-        weather_expl = "Live weather forecast data currently unavailable. Assigned neutral default baseline (12.5/25 pts) to avoid penalizing or artificially boosting request."
+        # Transparent rule: never fabricate missing weather; assign neutral baseline midpoint
+        weather_score = 12.5
+        weather_expl = "Live weather forecast data currently unavailable. Assigned neutral default baseline (12.5/25 pts) without fabricating values."
         missing_info.append("Live precipitation probability / meteorological radar feed")
+
     breakdown["weather_risk"] = FactorScore(weather_score, 25.0, weather_expl, "Meteorological provider / Neutral fallback")
 
+    # -------------------------------------------------------------
     # Factor 3: Crop Readiness & Perishability (Max 20 pts)
+    # -------------------------------------------------------------
     if crop_stage:
         data_sources.append("Farm profile crop stage records")
         stage_clean = crop_stage.lower().strip()
@@ -126,61 +194,96 @@ def calculate_priority_score(
             crop_expl = f"Crop in establishment/sowing stage ({crop_stage}); germination window is time-bound."
         else:  # Vegetative / Tillering
             crop_score = 6.0
-            crop_expl = f"Crop in vegetative growth stage ({crop_stage}); moderate urgency."
+            crop_expl = f"Crop in vegetative growth stage ({crop_stage}); standard agronomic urgency."
     else:
         crop_score = 8.0
         crop_expl = "No specific crop stage declared. Assigned median vegetative baseline (8.0/20 pts)."
         missing_info.append("Crop stage declaration")
     breakdown["crop_readiness"] = FactorScore(crop_score, 20.0, crop_expl, "Farm crop records")
 
-    # Factor 4: Farm Impact & Acreage (Max 10 pts)
-    if farm_size_acres is not None and farm_size_acres > 0:
-        data_sources.append("Farm land area registry")
-        # Scale: 1 acre = 3 pts, 3 acres = 6 pts, 5+ acres = 10 pts
-        acre_score = min(10.0, 2.0 + (farm_size_acres / 5.0) * 8.0)
-        acre_expl = f"Farm land area of {farm_size_acres} acres represents substantial operational coverage."
+    # -------------------------------------------------------------
+    # Factor 4: Waiting Time / Queue Age (Max 10 pts)
+    # -------------------------------------------------------------
+    if waiting_time_hours is not None:
+        data_sources.append("Booking request submission queue timestamp")
+        if waiting_time_hours >= 48.0:
+            wait_score = 10.0
+            wait_expl = f"Request pending for {waiting_time_hours:.1f}h: elevated queue priority to avoid farmer starvation."
+        elif waiting_time_hours >= 24.0:
+            wait_score = 8.0
+            wait_expl = f"Request pending for {waiting_time_hours:.1f}h: standard queue progression."
+        elif waiting_time_hours >= 12.0:
+            wait_score = 6.0
+            wait_expl = f"Request pending for {waiting_time_hours:.1f}h."
+        else:
+            wait_score = 4.0
+            wait_expl = f"Recent booking submission ({waiting_time_hours:.1f}h ago)."
+    elif farm_size_acres is not None and farm_size_acres > 0:
+        # Fallback to parcel acreage impact if queue age not yet applicable
+        data_sources.append("Farm parcel registry")
+        wait_score = min(10.0, 2.0 + (farm_size_acres / 5.0) * 8.0)
+        wait_expl = f"Field scale allocation for {farm_size_acres} acres agricultural plot."
     else:
-        acre_score = 5.0
-        acre_expl = "Farm acreage unspecified. Standard plot baseline assigned (5.0/10 pts)."
-        missing_info.append("Farm acreage area")
-    breakdown["farm_impact"] = FactorScore(acre_score, 10.0, acre_expl, "Farm profile database")
+        wait_score = 5.0
+        wait_expl = "Standard baseline queue progression assigned (5.0/10 pts)."
+        missing_info.append("Queue waiting time duration")
+    breakdown["waiting_time"] = FactorScore(wait_score, 10.0, wait_expl, "Queue dispatcher")
+    breakdown["farm_impact"] = breakdown["waiting_time"]  # Backward compatibility alias
 
+    # -------------------------------------------------------------
     # Factor 5: Deadline Proximity (Max 10 pts)
+    # -------------------------------------------------------------
     if deadline_hours is not None:
         data_sources.append("Operation requested schedule timeline")
         if deadline_hours <= 12.0:
             dl_score = 10.0
-            dl_expl = f"Immediate deadline: only {deadline_hours} hours remaining before target operational window closes."
+            dl_expl = f"Immediate deadline: only {deadline_hours:.1f} hours remaining before target operational window closes."
         elif deadline_hours <= 24.0:
             dl_score = 8.0
-            dl_expl = f"Tight deadline: {deadline_hours} hours until preferred operation time."
+            dl_expl = f"Tight deadline: {deadline_hours:.1f} hours until preferred operation time."
         elif deadline_hours <= 48.0:
             dl_score = 5.0
-            dl_expl = f"Moderate deadline: {deadline_hours} hours remaining."
+            dl_expl = f"Moderate deadline: {deadline_hours:.1f} hours remaining."
         else:
             dl_score = 2.0
-            dl_expl = f"Extended planning horizon ({deadline_hours} hours available)."
+            dl_expl = f"Extended planning horizon ({deadline_hours:.1f} hours available)."
     else:
         dl_score = 5.0
         dl_expl = "No explicit operational deadline supplied. Standard 48-hour default applied (5.0/10 pts)."
         missing_info.append("Operation deadline proximity hours")
     breakdown["deadline_proximity"] = FactorScore(dl_score, 10.0, dl_expl, "Schedule constraints")
 
-    # Factor 6: Soil & Agronomic Field Window (Max 10 pts)
-    if soil_moisture_suitable is not None:
+    # -------------------------------------------------------------
+    # Factor 6: Operational Feasibility & Validated Constraints (Max 10 pts)
+    # -------------------------------------------------------------
+    if operational_feasibility is not None:
+        feas_score = max(0.0, min(10.0, operational_feasibility))
+        feas_expl = f"Operational feasibility assessed at {feas_score}/10 based on machine specifications and travel radius."
+    elif soil_moisture_suitable is not None:
         if soil_moisture_suitable:
-            soil_score = 10.0
-            soil_expl = "Optimal soil moisture condition for mechanical traction and tillage."
+            feas_score = 10.0
+            feas_expl = "Optimal soil moisture condition for mechanical traction and tillage."
         else:
-            soil_score = 3.0
-            soil_expl = "Soil conditions suboptimal (excess waterlogging or extreme compaction risk)."
+            feas_score = 3.0
+            feas_expl = "Soil conditions suboptimal (excess waterlogging or compaction risk)."
     else:
-        soil_score = 7.0
-        soil_expl = "Normal regional seasonal soil condition baseline assumed (7.0/10 pts)."
-    breakdown["agronomic_window"] = FactorScore(soil_score, 10.0, soil_expl, "Agronomic conditions")
+        feas_score = 8.0
+        feas_expl = "Standard mechanical traction, access road passability, and operator feasibility baseline (8.0/10 pts)."
+    breakdown["operational_feasibility"] = FactorScore(feas_score, 10.0, feas_expl, "Agronomic operational constraints")
+    breakdown["agronomic_window"] = breakdown["operational_feasibility"]  # Backward compatibility alias
 
-    # Total Score Calculation (Sum of all factor scores, bounded between 0 and 100)
-    total_raw = sum(f.score for f in breakdown.values())
+    # -------------------------------------------------------------
+    # Total Score Calculation (Sum of 6 primary factors bounded [0, 100])
+    # -------------------------------------------------------------
+    primary_factors = [
+        breakdown["urgency"],
+        breakdown["weather_risk"],
+        breakdown["crop_readiness"],
+        breakdown["waiting_time"],
+        breakdown["deadline_proximity"],
+        breakdown["operational_feasibility"],
+    ]
+    total_raw = sum(f.score for f in primary_factors)
     total_score = max(0.0, min(100.0, total_raw))
 
     # Construct plain-language agronomic explanation
@@ -189,9 +292,12 @@ def calculate_priority_score(
         f"Urgency contributed {breakdown['urgency'].score}/{breakdown['urgency'].max_weight} pts ({breakdown['urgency'].explanation}).",
         f"Weather Risk contributed {breakdown['weather_risk'].score}/{breakdown['weather_risk'].max_weight} pts ({breakdown['weather_risk'].explanation}).",
         f"Crop Stage contributed {breakdown['crop_readiness'].score}/{breakdown['crop_readiness'].max_weight} pts ({breakdown['crop_readiness'].explanation}).",
+        f"Feasibility & Constraints contributed {breakdown['operational_feasibility'].score}/{breakdown['operational_feasibility'].max_weight} pts.",
     ]
     if missing_info:
-        explanation_parts.append(f"Notice: Missing parameters ({', '.join(missing_info)}) evaluated using neutral agronomic baselines without fabricated values.")
+        explanation_parts.append(
+            f"Notice: Missing parameters ({', '.join(missing_info)}) evaluated using transparent agronomic baselines without fabricated values."
+        )
 
     plain_language_explanation = " ".join(explanation_parts)
 

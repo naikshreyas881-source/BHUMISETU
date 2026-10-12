@@ -84,8 +84,16 @@ export const MarketplacePage: React.FC = () => {
   };
 
   const handleBookingSuccess = (bookingId: number) => {
-    setSuccessNotice(`Booking request #${bookingId} submitted successfully! You can track approval in Bookings.`);
-    setTimeout(() => setSuccessNotice(null), 6000);
+    if (bookingId === -1) {
+      setSuccessNotice(
+        'Offline Request Saved! Stored securely on your device. It will be verified and synchronized automatically once internet returns.'
+      );
+    } else {
+      setSuccessNotice(
+        `Booking request #${bookingId} submitted successfully! You can track approval in Bookings.`
+      );
+    }
+    setTimeout(() => setSuccessNotice(null), 7000);
   };
 
   return (

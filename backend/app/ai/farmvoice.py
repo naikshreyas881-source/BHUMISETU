@@ -8,8 +8,10 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone, timedelta
 import httpx
 from sqlalchemy.orm import Session
+from sqlalchemy import desc
 
 from app.core.config import settings
+from app.models.marketplace import Booking
 from app.ai.tools import (
     GEMINI_TOOL_DECLARATIONS,
     BOOKING_DRAFTS,
@@ -122,12 +124,130 @@ def execute_deterministic_voice_coordination(
     user_message: str,
     language: str
 ) -> Dict[str, Any]:
-    msg_lower = user_message.lower()
-    
+    msg_lower = user_message.lower().strip()
+
+    # 1. Offline Synchronization intent
+    if any(k in msg_lower for k in ["sync", "offline request", "offline sync", "pending sync", "ಸಿಂಕ್", "ಆಫ್‌ಲೈನ್"]):
+        reply_en = (
+            "Your pending offline booking requests are safely stored on your device in IndexedDB. "
+            "When your internet connection is active and backend reachability is verified, "
+            "they synchronize automatically. You can also tap 'Sync Now' in the top banner or offline requests drawer."
+        )
+        reply_kn = (
+            "ನಿಮ್ಮ ಆಫ್‌ಲೈನ್ ಬುಕಿಂಗ್ ವಿನಂತಿಗಳು ಸುರಕ್ಷಿತವಾಗಿವೆ. ಇಂಟರ್ನೆಟ್ ಸಂಪರ್ಕ ದೊರೆತ ತಕ್ಷಣ ಅವು ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಸರ್ವರ್‌ಗೆ ಸಿಂಕ್ ಆಗುತ್ತವೆ."
+        )
+        spoken = reply_kn if language == "kn" else reply_en
+        return {
+            "reply_text": spoken,
+            "spoken_audio_transcript": spoken,
+            "language": language,
+            "action_taken": "OFFLINE_SYNC_STATUS",
+            "data": {},
+            "draft_summary": None,
+            "requires_confirmation": False
+        }
+
+    # 2. Priority Score inquiry
+    if any(k in msg_lower for k in ["priority score", "priority", "ಪ್ರಾಶಸ್ತ್ಯ", "ಸ್ಕೋರ್"]):
+        latest_booking = (
+            db.query(Booking)
+            .filter(Booking.farmer_id == user_id)
+            .order_by(desc(Booking.created_at))
+            .first()
+        )
+        if latest_booking and latest_booking.priority_score is not None:
+            p_score = int(latest_booking.priority_score)
+            reply_en = (
+                f"Your latest booking #{latest_booking.id} for {latest_booking.operation} has a Weather-Aware AI Priority Score of {p_score}/100. "
+                f"It is calculated using 6 agronomic factors: Agricultural Urgency (25%), Weather Risk/Opportunity (25%), Crop Readiness (20%), "
+                f"Waiting Time (10%), Deadline Proximity (10%), and Operational Constraints (10%)."
+            )
+            reply_kn = (
+                f"ನಿಮ್ಮ ಇತ್ತೀಚಿನ ಬುಕಿಂಗ್ #{latest_booking.id} ನ ಆದ್ಯತಾ ಸ್ಕೋರ್ {p_score}/100 ಆಗಿದೆ. "
+                f"ಇದು 6 ಪ್ರಮುಖ ಕೃಷಿ ಮತ್ತು ಹವಾಮಾನ ಅಂಶಗಳ ಆಧಾರದ ಮೇಲೆ ಲೆಕ್ಕಹಾಕಲ್ಪಟ್ಟಿದೆ."
+            )
+        else:
+            reply_en = (
+                "The 6-factor AI priority score evaluates urgency (25%), weather conditions (25%), crop readiness (20%), "
+                "waiting time (10%), deadline proximity (10%), and operational feasibility (10%). "
+                "You can view the score on each booking card in your Bookings dashboard."
+            )
+            reply_kn = "ಭೂಮಿಸೇತು ಎಐ ಆದ್ಯತಾ ಸ್ಕೋರ್ ಹವಾಮಾನ, ಬೆಳೆ ಹಂತ ಮತ್ತು ತುರ್ತುಸ್ಥಿತಿಯನ್ನು ಆಧರಿಸಿ ಬುಕಿಂಗ್‌ಗಳನ್ನು ವಿಶ್ಲೇಷಿಸುತ್ತದೆ."
+        spoken = reply_kn if language == "kn" else reply_en
+        return {
+            "reply_text": spoken,
+            "spoken_audio_transcript": spoken,
+            "language": language,
+            "action_taken": "PRIORITY_SCORE_INFO",
+            "data": {"latest_booking_id": latest_booking.id if latest_booking else None},
+            "draft_summary": None,
+            "requires_confirmation": False
+        }
+
+    # 3. Weather Suitability inquiry
+    if any(k in msg_lower for k in ["weather", "weather suitab", "ಹವಾಮಾನ", "ಮಳೆ"]):
+        reply_en = (
+            "BHUMISETU analyzes real-time meteorological forecasts for your farm. For sprayers and drones, "
+            "wind speed above 20 km/h or rainfall triggers high drift risk. Harvesters are restricted during rain, "
+            "and tractors avoid waterlogged soil. Check the Weather Suitability meter on each equipment listing."
+        )
+        reply_kn = (
+            "ನಾವು ಲೈವ್ ಹವಾಮಾನ ಮುನ್ಸೂಚನೆಯನ್ನು ಪರಿಶೀಲಿಸುತ್ತೇವೆ. ಸಿಂಪಡಣೆ ಡ್ರೋನ್‌ಗಳಿಗೆ 20 ಕಿಮೀಗಿಂತ ಹೆಚ್ಚು ಗಾಳಿ ಅಥವಾ ಮಳೆ ಇದ್ದರೆ ಸುರಕ್ಷಿತವಲ್ಲ."
+        )
+        spoken = reply_kn if language == "kn" else reply_en
+        return {
+            "reply_text": spoken,
+            "spoken_audio_transcript": spoken,
+            "language": language,
+            "action_taken": "WEATHER_SUITABILITY_INFO",
+            "data": {},
+            "draft_summary": None,
+            "requires_confirmation": False
+        }
+
+    # 4. Confirmation inquiry / "Why was my request not confirmed?"
+    if any(k in msg_lower for k in ["why not confirmed", "not confirmed", "pending approval", "ದೃಢೀಕರಿಸಿಲ್ಲ"]):
+        latest_booking = (
+            db.query(Booking)
+            .filter(Booking.farmer_id == user_id)
+            .order_by(desc(Booking.created_at))
+            .first()
+        )
+        if latest_booking:
+            reason = latest_booking.confirmation_reason or (
+                "Equipment owner requires manual approval before confirming reservation."
+                if not latest_booking.auto_confirmed
+                else "Confirmed automatically."
+            )
+            reply_en = (
+                f"For booking #{latest_booking.id}: Status is {latest_booking.status.value.upper()}. "
+                f"Reason: {reason}"
+            )
+            reply_kn = (
+                f"ಬುಕಿಂಗ್ #{latest_booking.id} ಸ್ಥಿತಿ: {latest_booking.status.value}. ಕಾರಣ: {reason}"
+            )
+        else:
+            reply_en = (
+                "Automatic confirmation verifies 10 rules: authentication, active machinery, maintenance windows, "
+                "no overlapping reservations, travel distance, weather score at least 60, valid forecast, provider auto-booking policy, "
+                "and transaction eligibility. If the provider prefers manual review, it is held in Pending Approval."
+            )
+            reply_kn = "ಯಂತ್ರದ ಮಾಲೀಕರ ನೀತಿ ಅಥವಾ ಹವಾಮಾನ ಪರಿಸ್ಥಿತಿಗಳ ಕಾರಣದಿಂದ ಬುಕಿಂಗ್ ಅನುಮೋದನೆಗೆ ಕಾಯುತ್ತಿದೆ."
+        spoken = reply_kn if language == "kn" else reply_en
+        return {
+            "reply_text": spoken,
+            "spoken_audio_transcript": spoken,
+            "language": language,
+            "action_taken": "CONFIRMATION_EXPLANATION",
+            "data": {},
+            "draft_summary": None,
+            "requires_confirmation": False
+        }
+
     # Determine operation and machinery intent
     operation = None
     category = None
-    
+
     if any(k in msg_lower for k in ["plough", "plowing", "tilling", "ಉಳುಮೆ"]):
         operation = "ploughing"
         category = "tractor"

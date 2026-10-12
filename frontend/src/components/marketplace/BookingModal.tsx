@@ -9,6 +9,7 @@ import {
   ShieldCheck,
   AlertTriangle,
   Sparkles,
+  CloudOff,
 } from 'lucide-react';
 import apiClient from '../../api/client';
 import type { Resource, Farm } from '../../types/marketplace';
@@ -17,6 +18,7 @@ import {
   WeatherPredictionCard,
   type WeatherPredictionData,
 } from '../coordination/WeatherPredictionCard';
+import { useOffline } from '../../context/OfflineContext';
 
 
 interface BookingModalProps {
@@ -39,6 +41,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const [startTime, setStartTime] = useState<string>('07:00');
   const [durationHours, setDurationHours] = useState<number>(4);
   const [notes, setNotes] = useState<string>('');
+
+  const { isOnline, isBackendReachable, saveBookingOffline } = useOffline();
+  const isActuallyOnline = isOnline && isBackendReachable;
 
   // Conflict Detection state
   const [conflictReport, setConflictReport] = useState<{
@@ -239,8 +244,41 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     setError(null);
 
     const startDateTime = new Date(`${startDate}T${startTime}:00Z`).toISOString();
+    const endDateTime = new Date(
+      new Date(`${startDate}T${startTime}:00Z`).getTime() + durationHours * 3600 * 1000
+    ).toISOString();
     const idempotencyKey = `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
+    // 1. If currently offline or backend is unreachable, save directly to IndexedDB offline queue
+    if (!isActuallyOnline) {
+      try {
+        await saveBookingOffline({
+          idempotency_key: idempotencyKey,
+          resource_id: resource.id,
+          resource_name: resource.name,
+          farm_id: selectedFarmId || null,
+          farm_name: selectedFarm ? selectedFarm.name : null,
+          operation,
+          start_time: startDateTime,
+          end_time: endDateTime,
+          duration_hours: durationHours,
+          estimated_cost: estimatedCost,
+          notes: notes || undefined,
+        });
+
+        onSuccess(-1);
+        onClose();
+        return;
+      } catch (err: any) {
+        setError('Failed to save offline request: ' + (err.message || 'IndexedDB error'));
+        setIsConfirming(false);
+        return;
+      } finally {
+        setIsSubmitting(false);
+      }
+    }
+
+    // 2. Otherwise submit to backend
     try {
       const res = await apiClient.post('/bookings/', {
         resource_id: resource.id,
@@ -255,6 +293,33 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       onSuccess(res.data.id);
       onClose();
     } catch (err: any) {
+      // If network fails unexpectedly while submitting, safely fallback to local offline storage!
+      if (!err.response || err.code === 'ERR_NETWORK') {
+        try {
+          await saveBookingOffline({
+            idempotency_key: idempotencyKey,
+            resource_id: resource.id,
+            resource_name: resource.name,
+            farm_id: selectedFarmId || null,
+            farm_name: selectedFarm ? selectedFarm.name : null,
+            operation,
+            start_time: startDateTime,
+            end_time: endDateTime,
+            duration_hours: durationHours,
+            estimated_cost: estimatedCost,
+            notes: notes || undefined,
+          });
+
+          onSuccess(-1);
+          onClose();
+          return;
+        } catch (offlineErr: any) {
+          setError('Network failed and local save error: ' + (offlineErr.message || 'Error'));
+          setIsConfirming(false);
+          return;
+        }
+      }
+
       if (err.response?.data?.detail) {
         setError(err.response.data.detail);
       } else {
@@ -607,6 +672,24 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               )}
 
 
+              {/* Offline Advisory Notice */}
+              {!isActuallyOnline && (
+                <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200 text-amber-800 text-xs flex items-start space-x-2.5">
+                  <CloudOff className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <span className="font-bold block text-amber-900">
+                      Offline Storage Mode
+                    </span>
+                    <p className="text-[11px] text-amber-700 leading-tight">
+                      You are currently disconnected. This request will be saved locally in your Offline Queue as <strong>Saved Locally</strong>. It will be validated and synced automatically when the server is reached.
+                    </p>
+                    <p className="text-[10px] text-amber-600 italic">
+                      Notice: A locally saved request is not a confirmed booking.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <div className="flex space-x-3">
                 <button
                   type="button"
@@ -621,10 +704,19 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   type="button"
                   onClick={handleExecuteBooking}
                   disabled={isSubmitting}
-                  className="w-2/3 flex items-center justify-center space-x-2 bg-leaf-500 hover:bg-leaf-600 text-white font-bold py-3 rounded-xl transition-all shadow-md text-sm disabled:opacity-50"
+                  className={`w-2/3 flex items-center justify-center space-x-2 text-white font-bold py-3 rounded-xl transition-all shadow-md text-sm disabled:opacity-50 ${
+                    !isActuallyOnline
+                      ? 'bg-amber-600 hover:bg-amber-700'
+                      : 'bg-leaf-500 hover:bg-leaf-600'
+                  }`}
                 >
                   {isSubmitting ? (
                     <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  ) : !isActuallyOnline ? (
+                    <>
+                      <CloudOff className="w-4 h-4" />
+                      <span>Save Offline Request</span>
+                    </>
                   ) : (
                     <>
                       <CheckCircle2 className="w-4 h-4" />
